@@ -162,37 +162,126 @@ function clearPressed() {
 }
 
 // ---------------------------------------------------------------------------
-// Background — parallax hills (Cerro de las Tres Cruces, Cristo Rey)
+// Background — static far-parallax (Cielo y Cerros de Cali)
 // ---------------------------------------------------------------------------
 function createBackground(scene) {
-  // TODO: draw parallax hill silhouettes with Phaser Graphics
-  scene.bgLayers = [];
+  scene.bgGraphics = scene.add.graphics();
+  const gfx = scene.bgGraphics;
+
+  // 1. Cielo Atardecer (se ve en la esquina superior derecha)
+  gfx.fillGradientStyle(0x2b1055, 0x2b1055, 0xe07a5f, 0xe07a5f, 1);
+  gfx.fillRect(0, 0, W, H);
+
+  // 2. Cerros de Cali en la distancia (horizonte superior derecho)
+  gfx.fillStyle(0x1a1a2e, 1);
+  gfx.beginPath();
+  gfx.moveTo(250, 400);
+  gfx.lineTo(500, 100); // Cerro 1 (ej. Cristo Rey)
+  gfx.lineTo(650, 180);
+  gfx.lineTo(850, 80);  // Cerro 2 (ej. Tres Cruces)
+  gfx.lineTo(W, 450);
+  gfx.lineTo(250, 450);
+  gfx.closePath();
+  gfx.fill();
+
+  // Las 3 cruces en miniatura
+  gfx.lineStyle(2, 0x555566, 1);
+  for (let i = 0; i < 3; i++) {
+    let x = 620 + i * 15;
+    let y = 140 - (i === 1 ? 7 : 0);
+    gfx.lineBetween(x, y, x, y - 10);
+    gfx.lineBetween(x - 4, y - 6, x + 4, y - 6);
+  }
+
+  // 3. El abismo/vacío profundo (esquina inferior derecha y fondo)
+  // El asfalto se dibujará sobre esto.
+  gfx.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x050510, 0x050510, 1);
+  gfx.fillRect(0, 200, W, H);
 }
 
 // ---------------------------------------------------------------------------
-// Track — pseudo-3D asphalt with procedural texture
+// Track — Diagonal Isometric Projection (Desciende mid-left a bottom-right)
 // ---------------------------------------------------------------------------
 function createTrack(scene) {
-  // TODO: render scrolling isometric road with asphalt texture
   scene.trackGraphics = scene.add.graphics();
+  renderTrack(scene, 0); // Frame inicial
 }
 
-// ---------------------------------------------------------------------------
-// Players — Diablito (P1) and Nea (P2)
-// ---------------------------------------------------------------------------
+function renderTrack(scene, distance) {
+  const gfx = scene.trackGraphics;
+  gfx.clear();
+
+  // Constantes isométricas rígidas (Sin punto de fuga)
+  const m = 0.5; // Pendiente 2:1 (diagonal hacia abajo-derecha)
+  const curbOffset = 50;  // Altura base del andén izquierdo
+  const cliffOffset = 400; // Altura base del barranco derecho
+
+  // Ecuaciones de rectas paralelas
+  const curbY = (x) => x * m + curbOffset;
+  const cliffY = (x) => x * m + cliffOffset;
+
+  // 1. BASE DE ASFALTO INCLINADO (Paralelogramo perfecto)
+  gfx.fillStyle(0x3a3a45, 1);
+  gfx.fillPoints([
+    {x: 0, y: curbY(0)}, {x: W, y: curbY(W)},
+    {x: W, y: cliffY(W)}, {x: 0, y: cliffY(0)}
+  ], true);
+
+  // 2. ANDÉN IZQUIERDO (Amarillo y Azul, tamaño constante)
+  const sSpace = 120;
+  let sOff = distance % sSpace;
+  for (let x = W + sSpace - sOff; x > -sSpace; x -= sSpace) {
+    let worldId = Math.floor((x + distance) / sSpace);
+    let nextX = x - sSpace;
+    gfx.fillStyle(worldId % 2 === 0 ? 0xddaa00 : 0x2255dd, 1);
+    gfx.fillPoints([
+      {x: x, y: curbY(x)}, {x: nextX, y: curbY(nextX)},
+      {x: nextX, y: curbY(nextX) - 20}, {x: x, y: curbY(x) - 20}
+    ], true);
+  }
+
+  // 3. LÍNEAS DE LA CALLE (Perpendiculares a la diagonal)
+  const lSpace = 200;
+  let lOff = distance % lSpace;
+  for (let x = W + lSpace - lOff; x > -lSpace; x -= lSpace) {
+    let y = (curbY(x) + cliffY(x)) / 2;
+    gfx.fillStyle(0xddaa00, 0.9);
+    // Dibujamos el rectángulo de la línea respetando el ángulo isométrico
+    gfx.fillPoints([
+      {x: x, y: y}, {x: x - 60, y: y - 30},
+      {x: x - 60, y: y - 22}, {x: x, y: y + 8}
+    ], true);
+  }
+
+  // 4. BARANDA OXIDADA CONSTANTE (Borde Inferior Derecho)
+  gfx.lineStyle(4, 0x555555, 1);
+  gfx.lineBetween(0, cliffY(0), W, cliffY(W));
+
+  const rSpace = 150;
+  let rOff = distance % rSpace;
+  for (let x = W + rSpace - rOff; x > -rSpace; x -= rSpace) {
+    let y = cliffY(x);
+    gfx.fillStyle(0x8b4513, 1);
+    gfx.fillRect(x, y - 40, 8, 40); // Postes rectos
+  }
+  // Tubo principal rígido
+  gfx.lineStyle(6, 0x8b4513, 1);
+  gfx.lineBetween(0, cliffY(0) - 35, W, cliffY(W) - 35);
+}
+
 function createPlayers(scene) {
   scene.players = {
     p1: {
-      x: W / 2 - 80, y: H - 150,
-      vx: 0, vy: 0,
+      lat: -40, // Posición lateral (negativo es hacia el andén izquierdo)
+      x: 0, y: 0, 
       jumping: false, jumpHeld: 0,
       pushing: false,
       alive: true,
       label: 'P1',
     },
     p2: {
-      x: W / 2 + 80, y: H - 150,
-      vx: 0, vy: 0,
+      lat: 40, // Posición lateral (positivo es hacia el barranco derecho)
+      x: 0, y: 0,
       jumping: false, jumpHeld: 0,
       pushing: false,
       alive: true,
@@ -364,11 +453,15 @@ function resumeGame(scene) {
 // ---------------------------------------------------------------------------
 function updateScroll(scene, delta) {
   const dt = delta / 1000;
-  // Gradually increase speed over time
+  // Acelera progresivamente el mapa
   scene.gameState.speed = Math.min(scene.gameState.speed + 8 * dt, 900);
+  
+  // Aumenta la distancia global
   scene.gameState.distance += scene.gameState.speed * dt;
+  
+  // Dibuja la pista renderizando el desplazamiento de izquierda-arriba
+  renderTrack(scene, scene.gameState.distance); 
 }
-
 // ---------------------------------------------------------------------------
 // Player movement, jump, drift, push
 // ---------------------------------------------------------------------------
@@ -385,38 +478,47 @@ function updatePlayers(scene, delta, time) {
 function handlePlayerInput(scene, player, prefix, dt) {
   if (!player.alive) return;
 
-  const speed = 260;
-  let dx = 0;
+  const latSpeed = 220; // Velocidad de esquive
+  let dLat = 0;
 
-  if (held[prefix + '_L']) dx -= 1;
-  if (held[prefix + '_R']) dx += 1;
+  // Izquierda te mueve hacia el andén (arriba-derecha visualmente en la perpendicular)
+  if (held[prefix + '_L']) dLat -= 1;
+  // Derecha te mueve hacia el barranco (abajo-izquierda visualmente en la perpendicular)
+  if (held[prefix + '_R']) dLat += 1;
 
-  player.x = Phaser.Math.Clamp(player.x + dx * speed * dt, 60, W - 60);
+  player.lat += dLat * latSpeed * dt;
+  
+  // Limitar para que no se salgan del asfalto matemáticamente
+  player.lat = Phaser.Math.Clamp(player.lat, -85, 85);
 
-  // Jump — hold for higher jump (TODO: implement arc over obstacle)
+  // Convertir la posición 'lat' en coordenadas de pantalla diagonales
+  const baseX = W / 2; // 400
+  const baseY = baseX * 0.5 + 225; // 425 (centro de la pista)
+  
+  // Ecuación perpendicular para moverse 3/4
+  player.x = baseX + player.lat * (-2);
+  player.y = baseY + player.lat * (1);
+
+  // Lógica de Salto (se añadirá el eje Z después)
   if (held[prefix + '_1']) player.jumpHeld += dt;
   if (consumePressed(prefix + '_1')) {
     player.jumping = true;
-    // jumpHeld determines jump height
-  }
-
-  // Push
-  if (consumePressed(prefix + '_2')) {
-    player.pushing = true;
-    // TODO: apply impulse to opponent
   }
 }
 
 function resolvePlayerCollision(scene, p1, p2) {
-  // Block overlap: players can't occupy same horizontal space
-  const minDist = 40;
-  const diff = p1.x - p2.x;
-  if (Math.abs(diff) < minDist) {
-    const push = (minDist - Math.abs(diff)) / 2;
-    if (diff > 0) { p1.x += push; p2.x -= push; }
-    else { p1.x -= push; p2.x += push; }
-    p1.x = Phaser.Math.Clamp(p1.x, 60, W - 60);
-    p2.x = Phaser.Math.Clamp(p2.x, 60, W - 60);
+  // Las colisiones ahora son 1D sobre el eje lateral
+  const minLatDist = 40; // Ancho lateral de la canasta
+  const diff = p1.lat - p2.lat;
+  
+  if (Math.abs(diff) < minLatDist) {
+    const push = (minLatDist - Math.abs(diff)) / 2;
+    if (diff > 0) { p1.lat += push; p2.lat -= push; }
+    else { p1.lat -= push; p2.lat += push; }
+    
+    // Asegurar que un choque no los empuje fuera del puente
+    p1.lat = Phaser.Math.Clamp(p1.lat, -85, 85);
+    p2.lat = Phaser.Math.Clamp(p2.lat, -85, 85);
   }
 }
 
