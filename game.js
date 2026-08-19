@@ -371,10 +371,10 @@ function renderTrack(scene, distance) {
 function createPlayers(scene) {
   scene.players = {
     p1: {
-      lat: -40, // Posición lateral (negativo es hacia el andén izquierdo)
+      lat: 40,  // Posición lateral inicial (izquierda visualmente)
       prog: 0,  // Posición adelante(+)/atrás(-) respecto a la línea del pelotón
       x: 0, y: 0, 
-      jumping: false, jumpCharging: false, jumpHeld: 0, jumpElapsed: 0, jumpDuration: 0, jumpZ: 0,
+      jumping: false, jumpTimer: 0, jumpLanding: false, landTimer: 0, landStartZ: 0, jumpZ: 0,
       pushing: false,
       paralyzed: 0,
       knockbackVel: 0,
@@ -382,10 +382,10 @@ function createPlayers(scene) {
       label: 'P1',
     },
     p2: {
-      lat: 40, // Posición lateral (positivo es hacia el barranco derecho)
+      lat: -40, // Posición lateral inicial (derecha visualmente)
       prog: 0,
       x: 0, y: 0,
-      jumping: false, jumpCharging: false, jumpHeld: 0, jumpElapsed: 0, jumpDuration: 0, jumpZ: 0,
+      jumping: false, jumpTimer: 0, jumpLanding: false, landTimer: 0, landStartZ: 0, jumpZ: 0,
       pushing: false,
       paralyzed: 0,
       knockbackVel: 0,
@@ -854,8 +854,20 @@ function checkObstacleProximity(scene, ob, player, flagKey) {
     const dy = obY - player.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < def.hitRadius) {
-      ob[flagKey] = true;
-      resolveObstacleHit(scene, ob, player);
+      const inHazardLane = Math.abs(player.lat - ob.lat) < def.hazardRadius;
+      if (!inHazardLane) {
+        // Pasó de largo por el lado
+        ob[flagKey] = true;
+      } else if (isClearingJump(player, ob.type)) {
+        // En el aire esquivando el obstáculo: seguro mientras se mantenga arriba
+        if (ob.x < player.x - 5) {
+          ob[flagKey] = true;
+        }
+      } else {
+        // En el suelo sobre el obstáculo -> golpe
+        ob[flagKey] = true;
+        applyKnockback(scene, player);
+      }
     }
   }
 }
@@ -870,14 +882,6 @@ function resolveObstacleHit(scene, obstacle, player) {
     if (!onBridge) applyKnockback(scene, player);
     return;
   }
-
-  // hole / drunk — hay que estar en su carril Y saltar con la potencia adecuada
-  const inHazardLane = Math.abs(player.lat - obstacle.lat) < def.hazardRadius;
-  if (!inHazardLane) return; // el obstáculo no está en su camino, pasa de largo
-
-  if (isClearingJump(player, obstacle.type)) return; // salto limpio, sin penalización
-
-  applyKnockback(scene, player);
 }
 
 // Un obstáculo fallado NO es game over: te paraliza y te empuja hacia atrás
@@ -886,7 +890,8 @@ function applyKnockback(scene, player) {
   player.paralyzed = PARALYZE_DURATION;
   player.knockbackVel = PROG_KNOCKBACK / PARALYZE_DURATION; // retroceso suave
   player.jumping = false;
-  player.jumpCharging = false;
+  player.jumpLanding = false;
+  player.jumpTimer = 0;
   player.jumpZ = 0;
 }
 
@@ -1013,10 +1018,10 @@ function startGame(scene) {
     player.alive = true;
     player.eliminatedBy = null;
     player.jumping = false;
-    player.jumpCharging = false;
-    player.jumpHeld = 0;
-    player.jumpElapsed = 0;
-    player.jumpDuration = 0;
+    player.jumpLanding = false;
+    player.jumpTimer = 0;
+    player.landTimer = 0;
+    player.landStartZ = 0;
     player.jumpZ = 0;
     player.prog = 0;
     player.paralyzed = 0;
@@ -1115,10 +1120,10 @@ function handlePlayerInput(scene, player, prefix, dt) {
   // Mientras está paralizado (recién golpeado) no responde a los controles
   if (player.paralyzed <= 0) {
     let dLat = 0;
-    // Izquierda te mueve hacia el andén (arriba-derecha visualmente en la perpendicular)
-    if (held[prefix + '_L']) dLat -= 1;
-    // Derecha te mueve hacia el barranco (abajo-izquierda visualmente en la perpendicular)
-    if (held[prefix + '_R']) dLat += 1;
+    // Izquierda (A / Flecha Izq) te mueve hacia la izquierda de la pantalla
+    if (held[prefix + '_L']) dLat += 1;
+    // Derecha (D / Flecha Der) te mueve hacia la derecha de la pantalla
+    if (held[prefix + '_R']) dLat -= 1;
     if (dLat !== 0) {
       player.lat = Phaser.Math.Clamp(player.lat + dLat * latSpeed * dt, -85, 85);
     }
@@ -1154,46 +1159,53 @@ function handlePlayerInput(scene, player, prefix, dt) {
 
   if (player.paralyzed > 0) return; // no puede saltar mientras está aturdido
 
-  // --- Salto variable: mantené presionado para cargar, soltá para saltar ---
-  // Hueco (obstáculo pequeño) = toque corto. Botellas+borracho (grande) = carga larga.
-  const JUMP_MIN_DURATION = 0.22;   // salto corto (toque rápido)
-  const JUMP_MAX_DURATION = 0.85;   // salto largo (carga máxima)
-  const JUMP_MAX_CHARGE   = 0.6;    // segundos de carga para llegar al salto máximo
+  // --- Salto instantáneo: despega de inmediato y se mantiene hasta 2s si se deja presionado ---
+  const MAX_JUMP_TIME = 2.0;    // Máximo tiempo total en el aire
+  const MIN_JUMP_HOLD = 0.18;   // Tiempo mínimo en el aire para un toque rápido
+  const LAND_DURATION = 0.14;   // Duración de caída/aterrizaje suave
 
   if (consumePressed(prefix + '_1') && !player.jumping) {
-    player.jumpCharging = true;
-    player.jumpHeld = 0;
-  }
-  if (player.jumpCharging) {
-    if (held[prefix + '_1']) {
-      player.jumpHeld = Math.min(player.jumpHeld + dt, JUMP_MAX_CHARGE);
-    } else {
-      // Soltó el botón: despega con una duración proporcional a la carga
-      const t = player.jumpHeld / JUMP_MAX_CHARGE;
-      player.jumpDuration = Phaser.Math.Linear(JUMP_MIN_DURATION, JUMP_MAX_DURATION, t);
-      player.jumpElapsed = 0;
-      player.jumping = true;
-      player.jumpCharging = false;
-    }
+    player.jumping = true;
+    player.jumpLanding = false;
+    player.jumpTimer = 0;
+    player.landTimer = 0;
+    player.landStartZ = 1.0;
   }
 
   if (player.jumping) {
-    player.jumpElapsed += dt;
-    if (player.jumpElapsed >= player.jumpDuration) {
-      player.jumping = false;
-      player.jumpZ = 0;
+    if (!player.jumpLanding) {
+      player.jumpTimer += dt;
+      const isHeld = held[prefix + '_1'];
+
+      // Sube instantáneamente al tope en los primeros 0.10s
+      if (player.jumpTimer < 0.10) {
+        player.jumpZ = Math.sin((player.jumpTimer / 0.10) * (Math.PI / 2));
+      } else {
+        player.jumpZ = 1.0;
+      }
+
+      // Si soltó el botón (tras el mínimo) o se alcanzó el tiempo máximo de 2.0s
+      if ((!isHeld && player.jumpTimer >= MIN_JUMP_HOLD) || player.jumpTimer >= (MAX_JUMP_TIME - LAND_DURATION)) {
+        player.jumpLanding = true;
+        player.landTimer = 0;
+        player.landStartZ = player.jumpZ;
+      }
     } else {
-      // Arco parabólico simple (0 → 1 → 0) para la altura visual
-      player.jumpZ = Math.sin(Math.PI * (player.jumpElapsed / player.jumpDuration));
+      player.landTimer += dt;
+      if (player.landTimer >= LAND_DURATION) {
+        player.jumping = false;
+        player.jumpLanding = false;
+        player.jumpZ = 0;
+      } else {
+        const t = player.landTimer / LAND_DURATION;
+        player.jumpZ = player.landStartZ * Math.cos(t * (Math.PI / 2));
+      }
     }
   }
 }
 
-// Duración de salto necesaria para "limpiar" cada tipo de obstáculo
-const JUMP_REQUIRED = { hole: 0.22, drunk: 0.55 };
-
 function isClearingJump(player, obstacleType) {
-  return player.jumping && player.jumpDuration >= JUMP_REQUIRED[obstacleType];
+  return player.jumping && player.jumpZ > 0.25;
 }
 
 function resolvePlayerCollision(scene, p1, p2) {
