@@ -530,9 +530,10 @@ function renderOnePlayer(gfx, player, time, speed) {
   const liftY = player.y - player.jumpZ * 46;
   const charJZ = descending ? Math.pow(player.jumpZ, 0.4) : player.jumpZ;
   const charY  = player.y - charJZ * 46;
+  const pushDir = (player._pushT && (time - player._pushT) < 350) ? player._pushDir : 0;
   drawBeerCrate(gfx, player.x, liftY, 3);
-  if (player.label === 'P1') drawNea(gfx, player.x, charY, 3, time, speed, charJZ, player._wF);
-  else drawChango(gfx, player.x, charY, 3, time, speed, charJZ, player._wF);
+  if (player.label === 'P1') drawNea(gfx, player.x, charY, 3, time, speed, charJZ, player._wF, pushDir);
+  else drawChango(gfx, player.x, charY, 3, time, speed, charJZ, player._wF, pushDir);
 }
 
 // ---------------------------------------------------------------------------
@@ -1462,6 +1463,7 @@ function startGame(scene) {
     player.paralyzed = 0;
     player.knockbackVel = 0;
     player._wF = 0.0008;
+    player._pushT = null;
   }
   scene.players.p1.x = W / 2 - 80;
   scene.players.p2.x = W / 2 + 80;
@@ -1656,6 +1658,8 @@ function handlePlayerInput(scene, player, prefix, dt) {
         opp.lat = Phaser.Math.Clamp(opp.lat + pushDir * 38, LAT_MIN, LAT_MAX);
         opp.paralyzed = 0.35;
         player.score += 200;
+        player._pushT = scene.time.now;
+        player._pushDir = opp.x >= player.x ? 1 : -1;
         showScorePopup(scene, player.x, player.y - 35, '+200 EMPUJÓN!', '#ff44aa');
       }
     }
@@ -1716,7 +1720,7 @@ function checkPlayerElimination(scene) {
 //
 // cx, cy = same anchor as drawBeerCrate (center of front face)
 // ---------------------------------------------------------------------------
-function drawNea(gfx, cx, cy, scale, time, speed, jumpZ, waveF) {
+function drawNea(gfx, cx, cy, scale, time, speed, jumpZ, waveF, pushDir) {
   const s = scale || 3;
   const r = (v) => Math.round(v * s);
   const baseY = cy - r(3.5);
@@ -1764,9 +1768,21 @@ function drawNea(gfx, cx, cy, scale, time, speed, jumpZ, waveF) {
   gfx.fillStyle(0xb56030, 1);
   gfx.fillRect(bx          + lax, baseY - r(6.5) + lay, r(1.5), r(1.5));
   gfx.fillRect(bx + r(1.4) + lax, baseY - r(6.3) + lay, r(2.8), r(1.3));
-  gfx.fillRect(bx + r(3.7) + lax, baseY - r(6.3) + lay, r(1.3), r(3.8));
-  gfx.fillStyle(0xc47840, 1);
-  gfx.fillRect(bx + r(3.4) + lax, baseY - r(2.5) + lay, r(1.8), r(1));
+  if (pushDir > 0) {
+    // Empuje derecha: antebrazo horizontal extendido
+    gfx.fillRect(bx + r(4.2) + lax, baseY - r(6.5) + lay, r(7), r(1.3));
+    gfx.fillStyle(0xc47840, 1);
+    gfx.fillRect(bx + r(10.8) + lax, baseY - r(6.6) + lay, r(2), r(1.6));
+  } else if (pushDir < 0) {
+    // Empuje izquierda: brazo sale del torso hacia la izquierda
+    gfx.fillRect(bx - r(2.7) + lax, baseY - r(5.5) + lay, r(8.5), r(1.3));
+    gfx.fillStyle(0xc47840, 1);
+    gfx.fillRect(bx - r(10.7) + lax, baseY - r(5.6) + lay, r(2), r(1.6));
+  } else {
+    gfx.fillRect(bx + r(3.7) + lax, baseY - r(6.3) + lay, r(1.3), r(3.8));
+    gfx.fillStyle(0xc47840, 1);
+    gfx.fillRect(bx + r(3.4) + lax, baseY - r(2.5) + lay, r(1.8), r(1));
+  }
 
   // ── TORSO FUCSIA
   gfx.fillStyle(0xdd1180, 1);
@@ -1874,7 +1890,7 @@ function drawNea(gfx, cx, cy, scale, time, speed, jumpZ, waveF) {
 //
 // cx, cy = mismo anchor que drawBeerCrate (centro de la cara frontal)
 // ---------------------------------------------------------------------------
-function drawChango(gfx, cx, cy, scale, time, speed, jumpZ, waveF) {
+function drawChango(gfx, cx, cy, scale, time, speed, jumpZ, waveF, pushDir) {
   const base = scale || 3;
   const s = base * 1.15;                          // 15% más grande que Nea
   const r = (v) => Math.round(v * s);
@@ -1942,9 +1958,21 @@ function drawChango(gfx, cx, cy, scale, time, speed, jumpZ, waveF) {
   gfx.fillStyle(0xcc2222, 1);
   gfx.fillRect(bx          + lax, baseY - r(6.5) + lay, r(1.5), r(1.5));
   gfx.fillRect(bx + r(1.4) + lax, baseY - r(6.3) + lay, r(2.8), r(1.3));
-  gfx.fillRect(bx + r(3.7) + lax, baseY - r(6.3) + lay, r(1.3), r(3.5));
-  gfx.fillStyle(0xbb1111, 1);
-  gfx.fillRect(bx + r(3.3) + lax, baseY - r(3.0) + lay, r(2.0), r(1.5));
+  if (pushDir > 0) {
+    // Empuje derecha: antebrazo horizontal extendido
+    gfx.fillRect(bx + r(4.2) + lax, baseY - r(6.5) + lay, r(7), r(1.3));
+    gfx.fillStyle(0xbb1111, 1);
+    gfx.fillRect(bx + r(10.8) + lax, baseY - r(6.6) + lay, r(2), r(1.6));
+  } else if (pushDir < 0) {
+    // Empuje izquierda: brazo sale del torso hacia la izquierda
+    gfx.fillRect(bx - r(2.7) + lax, baseY - r(5.5) + lay, r(8.5), r(1.3));
+    gfx.fillStyle(0xbb1111, 1);
+    gfx.fillRect(bx - r(10.7) + lax, baseY - r(5.6) + lay, r(2), r(1.6));
+  } else {
+    gfx.fillRect(bx + r(3.7) + lax, baseY - r(6.3) + lay, r(1.3), r(3.5));
+    gfx.fillStyle(0xbb1111, 1);
+    gfx.fillRect(bx + r(3.3) + lax, baseY - r(3.0) + lay, r(2.0), r(1.5));
+  }
 
   // ── TORSO ROJO
   gfx.fillStyle(0xcc2222, 1);
