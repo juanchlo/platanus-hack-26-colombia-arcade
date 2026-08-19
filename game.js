@@ -162,39 +162,145 @@ function clearPressed() {
 }
 
 // ---------------------------------------------------------------------------
-// Background — parallax hills (Cerro de las Tres Cruces, Cristo Rey)
+// Background — static far-parallax (Cielo y Cerros de Cali)
 // ---------------------------------------------------------------------------
 function createBackground(scene) {
-  // TODO: draw parallax hill silhouettes with Phaser Graphics
-  scene.bgLayers = [];
+  scene.bgGraphics = scene.add.graphics();
+  const gfx = scene.bgGraphics;
+
+  // 1. Cielo Atardecer (se ve en la esquina superior derecha)
+  gfx.fillGradientStyle(0x2b1055, 0x2b1055, 0xe07a5f, 0xe07a5f, 1);
+  gfx.fillRect(0, 0, W, H);
+
+  // 2. Cerros de Cali en la distancia (horizonte superior derecho)
+  gfx.fillStyle(0x1a1a2e, 1);
+  gfx.beginPath();
+  gfx.moveTo(250, 400);
+  gfx.lineTo(500, 100); // Cerro 1 (ej. Cristo Rey)
+  gfx.lineTo(650, 180);
+  gfx.lineTo(850, 80);  // Cerro 2 (ej. Tres Cruces)
+  gfx.lineTo(W, 450);
+  gfx.lineTo(250, 450);
+  gfx.closePath();
+  gfx.fill();
+
+  // Las 3 cruces en miniatura
+  gfx.lineStyle(2, 0x555566, 1);
+  for (let i = 0; i < 3; i++) {
+    let x = 620 + i * 15;
+    let y = 140 - (i === 1 ? 7 : 0);
+    gfx.lineBetween(x, y, x, y - 10);
+    gfx.lineBetween(x - 4, y - 6, x + 4, y - 6);
+  }
+
+  // 3. El abismo/vacío profundo (esquina inferior derecha y fondo)
+  // El asfalto se dibujará sobre esto.
+  gfx.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x050510, 0x050510, 1);
+  gfx.fillRect(0, 200, W, H);
 }
 
 // ---------------------------------------------------------------------------
-// Track — pseudo-3D asphalt with procedural texture
+// Track — Diagonal Isometric Projection (Desciende mid-left a bottom-right)
 // ---------------------------------------------------------------------------
+// Constantes isométricas rígidas (Sin punto de fuga) — compartidas con
+// el sistema de obstáculos para que todo se dibuje sobre la misma pista.
+const TRACK_M = 0.5;          // Pendiente 2:1 (diagonal hacia abajo-derecha)
+const CURB_OFFSET = 50;       // Altura base del andén izquierdo
+const CLIFF_OFFSET = 400;     // Altura base del barranco derecho
+const LAT_MIN = -85;
+const LAT_MAX = 85;
+const COLLISION_X = 400;      // "Línea del ahora": donde vive el jugador en X
+
+const trackCurbY  = (x) => x * TRACK_M + CURB_OFFSET;
+const trackCliffY = (x) => x * TRACK_M + CLIFF_OFFSET;
+
+// Convierte una posición lateral (lat, igual que player.lat) + una X de
+// pantalla en la Y correspondiente sobre la pista diagonal.
+function laneY(x, lat) {
+  const t = Phaser.Math.Clamp((lat - LAT_MIN) / (LAT_MAX - LAT_MIN), 0, 1);
+  return trackCurbY(x) + t * (trackCliffY(x) - trackCurbY(x));
+}
+
 function createTrack(scene) {
-  // TODO: render scrolling isometric road with asphalt texture
   scene.trackGraphics = scene.add.graphics();
+  renderTrack(scene, 0); // Frame inicial
 }
 
-// ---------------------------------------------------------------------------
-// Players — Diablito (P1) and Nea (P2)
-// ---------------------------------------------------------------------------
+function renderTrack(scene, distance) {
+  const gfx = scene.trackGraphics;
+  gfx.clear();
+
+  const curbY = trackCurbY;
+  const cliffY = trackCliffY;
+
+  // 1. BASE DE ASFALTO INCLINADO (Paralelogramo perfecto)
+  gfx.fillStyle(0x3a3a45, 1);
+  gfx.fillPoints([
+    {x: 0, y: curbY(0)}, {x: W, y: curbY(W)},
+    {x: W, y: cliffY(W)}, {x: 0, y: cliffY(0)}
+  ], true);
+
+  // 2. ANDÉN IZQUIERDO (Amarillo y Azul, tamaño constante)
+  const sSpace = 120;
+  let sOff = distance % sSpace;
+  for (let x = W + sSpace - sOff; x > -sSpace; x -= sSpace) {
+    let worldId = Math.floor((x + distance) / sSpace);
+    let nextX = x - sSpace;
+    gfx.fillStyle(worldId % 2 === 0 ? 0xddaa00 : 0x2255dd, 1);
+    gfx.fillPoints([
+      {x: x, y: curbY(x)}, {x: nextX, y: curbY(nextX)},
+      {x: nextX, y: curbY(nextX) - 20}, {x: x, y: curbY(x) - 20}
+    ], true);
+  }
+
+  // 3. LÍNEAS DE LA CALLE (Perpendiculares a la diagonal)
+  const lSpace = 200;
+  let lOff = distance % lSpace;
+  for (let x = W + lSpace - lOff; x > -lSpace; x -= lSpace) {
+    let y = (curbY(x) + cliffY(x)) / 2;
+    gfx.fillStyle(0xddaa00, 0.9);
+    // Dibujamos el rectángulo de la línea respetando el ángulo isométrico
+    gfx.fillPoints([
+      {x: x, y: y}, {x: x - 60, y: y - 30},
+      {x: x - 60, y: y - 22}, {x: x, y: y + 8}
+    ], true);
+  }
+
+  // 4. BARANDA OXIDADA CONSTANTE (Borde Inferior Derecho)
+  gfx.lineStyle(4, 0x555555, 1);
+  gfx.lineBetween(0, cliffY(0), W, cliffY(W));
+
+  const rSpace = 150;
+  let rOff = distance % rSpace;
+  for (let x = W + rSpace - rOff; x > -rSpace; x -= rSpace) {
+    let y = cliffY(x);
+    gfx.fillStyle(0x8b4513, 1);
+    gfx.fillRect(x, y - 40, 8, 40); // Postes rectos
+  }
+  // Tubo principal rígido
+  gfx.lineStyle(6, 0x8b4513, 1);
+  gfx.lineBetween(0, cliffY(0) - 35, W, cliffY(W) - 35);
+}
+
 function createPlayers(scene) {
   scene.players = {
     p1: {
-      x: W / 2 - 80, y: H - 150,
-      vx: 0, vy: 0,
-      jumping: false, jumpHeld: 0,
+      lat: -40, // Posición lateral (negativo es hacia el andén izquierdo)
+      prog: 0,  // Posición adelante(+)/atrás(-) respecto a la línea del pelotón
+      x: 0, y: 0, 
+      jumping: false, jumpCharging: false, jumpHeld: 0, jumpElapsed: 0, jumpDuration: 0, jumpZ: 0,
       pushing: false,
+      paralyzed: 0,
       alive: true,
       label: 'P1',
     },
     p2: {
-      x: W / 2 + 80, y: H - 150,
-      vx: 0, vy: 0,
-      jumping: false, jumpHeld: 0,
+      lat: 40, // Posición lateral (positivo es hacia el barranco derecho)
+      prog: 0,
+      x: 0, y: 0,
+      jumping: false, jumpCharging: false, jumpHeld: 0, jumpElapsed: 0, jumpDuration: 0, jumpZ: 0,
       pushing: false,
+      paralyzed: 0,
       alive: true,
       label: 'P2',
     },
@@ -207,17 +313,281 @@ function renderPlayers(scene) {
   const gfx = scene.playerGraphics;
   gfx.clear();
   const { p1, p2 } = scene.players;
-  if (p1.alive) { drawBeerCrate(gfx, p1.x, p1.y, 3); drawNea(gfx, p1.x, p1.y, 3); }
-  if (p2.alive) { drawBeerCrate(gfx, p2.x, p2.y, 3); drawChango(gfx, p2.x, p2.y, 3); }
+  renderOnePlayer(gfx, p1);
+  renderOnePlayer(gfx, p2);
+}
+
+function renderOnePlayer(gfx, player) {
+  if (!player.alive) return;
+
+  // Sombra en el piso (se achica mientras el jugador está en el aire)
+  const shrink = 1 - player.jumpZ * 0.5;
+  gfx.fillStyle(0x000000, 0.3);
+  gfx.fillEllipse(player.x, player.y + 14, 34 * shrink, 10 * shrink);
+
+  // Destello rojo breve mientras está paralizado tras un golpe
+  if (player.paralyzed > 0) {
+    gfx.fillStyle(0xff3333, 0.35 * Math.min(1, player.paralyzed / PARALYZE_DURATION));
+    gfx.fillCircle(player.x, player.y, 46);
+  }
+
+  // La canasta se eleva visualmente durante el salto (eje Z falso)
+  const liftY = player.y - player.jumpZ * 46;
+  drawBeerCrate(gfx, player.x, liftY, 3);
+  if (player.label === 'P1') drawNea(gfx, player.x, liftY, 3);
+  else drawChango(gfx, player.x, liftY, 3);
 }
 
 // ---------------------------------------------------------------------------
-// Obstacles — huecos (small) and borrachos/botellas (large)
+// Obstacles — huecos (small), borrachos/botellas (large) y baranda de drift
 // ---------------------------------------------------------------------------
+
+// --- Arte procedural -------------------------------------------------------
+function drawPothole(gfx, cx, cy, scale) {
+  const s = scale || 1;
+  const rx = 26 * s;
+  const ry = 12 * s; // achatado para respetar la perspectiva de la pista
+
+  gfx.fillStyle(0x0d0d10, 1);
+  gfx.fillEllipse(cx, cy, rx * 2.15, ry * 2.15);
+
+  gfx.fillStyle(0x2a2a30, 1);
+  gfx.fillEllipse(cx, cy, rx * 1.8, ry * 1.8);
+
+  gfx.fillStyle(0x000000, 1);
+  gfx.fillEllipse(cx, cy, rx, ry);
+
+  gfx.lineStyle(2 * s, 0x1a1a1a, 1);
+  for (let i = 0; i < 5; i++) {
+    const ang = (i / 5) * Math.PI * 2;
+    const x2 = cx + Math.cos(ang) * rx * 1.9;
+    const y2 = cy + Math.sin(ang) * ry * 1.9;
+    gfx.lineBetween(cx + Math.cos(ang) * rx * 0.9, cy + Math.sin(ang) * ry * 0.9, x2, y2);
+  }
+
+  gfx.lineStyle(1.5 * s, 0x55555a, 0.6);
+  gfx.strokeEllipse(cx, cy - ry * 0.15, rx * 1.75, ry * 1.75);
+}
+
+function drawBottle(gfx, x, y, s, tilt) {
+  const C_GLASS = 0x2e7d32;
+  const C_LABEL = 0xf5f5f0;
+  const C_CAP   = 0x8a8a8a;
+  const bw = 3 * s, bh = 9 * s;
+  const ox = tilt * 2 * s;
+
+  gfx.fillStyle(C_GLASS, 1);
+  gfx.fillRoundedRect(x - bw / 2, y - bh / 2, bw, bh, s);
+  gfx.fillRect(x - bw / 4 + ox, y - bh / 2 - 2 * s, bw / 2, 2.5 * s);
+
+  gfx.fillStyle(C_CAP, 1);
+  gfx.fillRect(x - bw / 5 + ox, y - bh / 2 - 3 * s, bw / 2.5, 1.5 * s);
+
+  gfx.fillStyle(C_LABEL, 1);
+  gfx.fillRect(x - bw / 2, y - 1 * s, bw, 3 * s);
+}
+
+function drawDrunkObstacle(gfx, cx, cy, scale) {
+  const s = scale || 3;
+
+  gfx.fillStyle(0x000000, 0.35);
+  gfx.fillEllipse(cx, cy + 4 * s, 40 * s, 12 * s);
+
+  const C_SKIN  = 0xc98a5b;
+  const C_SHIRT = 0xf2f2f2;
+  const C_PANTS = 0x2b2b40;
+  const C_HAIR  = 0x1a1208;
+  const C_DARK  = 0x1a1a1a;
+  const C_RUANA = 0xb33a3a;
+
+  gfx.fillStyle(C_PANTS, 1);
+  gfx.fillRoundedRect(cx - 36 * s, cy - 3 * s, 20 * s, 6 * s, 3 * s);
+  gfx.fillRoundedRect(cx - 30 * s, cy + 3 * s, 18 * s, 6 * s, 3 * s);
+
+  gfx.fillStyle(C_RUANA, 1);
+  gfx.fillRoundedRect(cx - 16 * s, cy - 6 * s, 24 * s, 12 * s, 4 * s);
+  gfx.lineStyle(1 * s, 0x7a2424, 1);
+  gfx.lineBetween(cx - 16 * s, cy, cx + 8 * s, cy);
+
+  gfx.fillStyle(C_SHIRT, 1);
+  gfx.fillRoundedRect(cx - 4 * s, cy - 5 * s, 10 * s, 10 * s, 3 * s);
+
+  gfx.fillStyle(C_SKIN, 1);
+  gfx.fillRoundedRect(cx - 2 * s, cy - 9 * s, 14 * s, 4 * s, 2 * s);
+
+  gfx.fillStyle(C_SKIN, 1);
+  gfx.fillCircle(cx + 14 * s, cy - 2 * s, 6 * s);
+  gfx.fillStyle(C_HAIR, 1);
+  gfx.fillEllipse(cx + 12 * s, cy - 6 * s, 10 * s, 5 * s);
+  gfx.lineStyle(1 * s, C_DARK, 0.6);
+  gfx.strokeCircle(cx + 14 * s, cy - 2 * s, 6 * s);
+
+  drawBottle(gfx, cx - 22 * s, cy - 15 * s, s, 0.4);
+  drawBottle(gfx, cx + 4 * s,  cy + 13 * s, s, -0.6);
+  drawBottle(gfx, cx - 38 * s, cy + 11 * s, s, 1.0);
+}
+
+function drawRustyRailObstacle(gfx, cx, cy, scale, length) {
+  const s = scale || 1;
+  const len = length || 90 * s;
+
+  const C_POST      = 0x6b4226;
+  const C_PIPE_BASE = 0x8b4513;
+  const C_RUST_1    = 0xb35a1f;
+  const C_RUST_2    = 0xd9782e;
+  const C_HAZARD_Y  = 0xf2c40c;
+  const C_HAZARD_B  = 0x1a1a1a;
+  const C_DARK      = 0x2a1608;
+
+  gfx.fillStyle(C_POST, 1);
+  gfx.fillRect(cx - len / 2, cy - 6 * s, 5 * s, 26 * s);
+  gfx.fillRect(cx + len / 2 - 5 * s, cy - 6 * s, 5 * s, 26 * s);
+
+  gfx.fillStyle(C_RUST_1, 0.8);
+  gfx.fillCircle(cx - len / 2 + 2 * s, cy + 16 * s, 6 * s);
+  gfx.fillCircle(cx + len / 2 - 2 * s, cy + 16 * s, 6 * s);
+
+  gfx.lineStyle(6 * s, C_PIPE_BASE, 1);
+  gfx.beginPath();
+  gfx.moveTo(cx - len / 2, cy - 4 * s);
+  gfx.lineTo(cx, cy + 2 * s);
+  gfx.lineTo(cx + len / 2, cy - 4 * s);
+  gfx.strokePath();
+
+  for (let i = 0; i < 5; i++) {
+    const t = i / 4;
+    const px = cx - len / 2 + t * len;
+    const py = cy - 4 * s + Math.sin(t * Math.PI) * 6 * s;
+    gfx.fillStyle(i % 2 === 0 ? C_RUST_1 : C_RUST_2, 0.85);
+    gfx.fillCircle(px, py, 3 * s + (i % 3));
+  }
+
+  for (let i = 0; i < 4; i++) {
+    gfx.fillStyle(i % 2 === 0 ? C_HAZARD_Y : C_HAZARD_B, 1);
+    gfx.fillRect(cx - len / 2 - 2 * s + i * 3 * s, cy - 12 * s, 3 * s, 8 * s);
+  }
+
+  gfx.lineStyle(1 * s, C_DARK, 0.7);
+  gfx.strokeRect(cx - len / 2, cy - 6 * s, 5 * s, 26 * s);
+  gfx.strokeRect(cx + len / 2 - 5 * s, cy - 6 * s, 5 * s, 26 * s);
+}
+
+// --- Configuración por tipo -------------------------------------------------
+// hazardRadius: mitad del ancho lateral que ocupa el peligro (en unidades de "lat")
+// railGap: [min,max] de lat que SÍ es seguro pasar (pegado a la baranda) — el resto cae al vacío
+const OBSTACLE_DEF = {
+  hole:  { hazardRadius: 16, scale: 1.1 },
+  drunk: { hazardRadius: 26, scale: 1.5 },
+  rail:  { railSafeMin: 55, railSafeMax: 85, scale: 1 }, // franja segura pegada al barranco
+};
+
+const SPAWN_X = W + 90; // aparecen fuera de pantalla, a la derecha
+const DESPAWN_X = -80;
+
 function createObstaclePool(scene) {
-  // TODO: implement infinite obstacle generator
   scene.obstacles = [];
   scene.obstacleGraphics = scene.add.graphics();
+  scene.gameState.spawnTimer = 1.2; // primer obstáculo llega poco después de arrancar
+}
+
+function spawnObstacle(scene) {
+  const roll = Math.random();
+  let type = 'hole';
+  if (roll < 0.34) type = 'hole';
+  else if (roll < 0.68) type = 'drunk';
+  else type = 'rail';
+
+  let lat;
+  if (type === 'rail') {
+    // La baranda siempre está pegada al lado del barranco (lat positivo)
+    lat = Phaser.Math.Between(60, 80);
+  } else {
+    lat = Phaser.Math.Between(LAT_MIN + 10, LAT_MAX - 10);
+  }
+
+  scene.obstacles.push({
+    type, lat,
+    x: SPAWN_X,
+    prevX: SPAWN_X,
+    resolvedP1: false, // ya se evaluó el cruce para cada jugador (cada uno tiene su propia línea, según su 'prog')
+    resolvedP2: false,
+  });
+}
+
+function updateObstacles(scene, delta) {
+  const dt = delta / 1000;
+  const { p1, p2 } = scene.players;
+  const gfx = scene.obstacleGraphics;
+
+  // Spawnea nuevos obstáculos; el ritmo se acelera con la velocidad
+  scene.gameState.spawnTimer -= dt;
+  if (scene.gameState.spawnTimer <= 0) {
+    spawnObstacle(scene);
+    const speedFactor = Phaser.Math.Clamp(scene.gameState.speed / 900, 0, 1);
+    const gapMax = Phaser.Math.Linear(2.2, 0.9, speedFactor);
+    const gapMin = Phaser.Math.Linear(1.1, 0.5, speedFactor);
+    scene.gameState.spawnTimer = Phaser.Math.FloatBetween(gapMin, gapMax);
+  }
+
+  gfx.clear();
+
+  for (let i = scene.obstacles.length - 1; i >= 0; i--) {
+    const ob = scene.obstacles[i];
+    ob.prevX = ob.x;
+    ob.x -= scene.gameState.speed * dt;
+
+    // Resolución del choque: se evalúa una sola vez por jugador, al cruzar
+    // SU propia línea del "ahora" (la línea base desplazada por su 'prog').
+    checkObstacleCrossing(scene, ob, p1, 'resolvedP1');
+    checkObstacleCrossing(scene, ob, p2, 'resolvedP2');
+
+    const y = laneY(ob.x, ob.lat);
+    const def = OBSTACLE_DEF[ob.type];
+    if (ob.type === 'hole') drawPothole(gfx, ob.x, y, def.scale);
+    else if (ob.type === 'drunk') drawDrunkObstacle(gfx, ob.x, y, def.scale);
+    else if (ob.type === 'rail') drawRustyRailObstacle(gfx, ob.x, y, def.scale, 110);
+
+    if (ob.x < DESPAWN_X) scene.obstacles.splice(i, 1);
+  }
+}
+
+function checkObstacleCrossing(scene, ob, player, flagKey) {
+  if (ob[flagKey]) return;
+  const line = COLLISION_X + player.prog; // adelantarse o rezagarse mueve tu propia línea de choque
+  if (ob.prevX >= line && ob.x < line) {
+    ob[flagKey] = true;
+    resolveObstacleHit(scene, ob, player);
+  }
+}
+
+function resolveObstacleHit(scene, obstacle, player) {
+  if (!player.alive) return;
+  const def = OBSTACLE_DEF[obstacle.type];
+
+  if (obstacle.type === 'rail') {
+    // Debe estar drifteando MUY cerca de la baranda (franja segura); si no, lo golpea
+    const inSafeZone = player.lat >= def.railSafeMin && player.lat <= def.railSafeMax;
+    if (!inSafeZone) applyKnockback(scene, player);
+    return;
+  }
+
+  // hole / drunk — hay que estar en su carril Y saltar con la potencia adecuada
+  const inHazardLane = Math.abs(player.lat - obstacle.lat) < def.hazardRadius;
+  if (!inHazardLane) return; // el obstáculo no está en su camino, pasa de largo
+
+  if (isClearingJump(player, obstacle.type)) return; // salto limpio, sin penalización
+
+  applyKnockback(scene, player);
+}
+
+// Un obstáculo fallado NO es game over: te manda hacia atrás y te paraliza
+// un instante. Sólo perdés si te quedan empujando tanto que salís de pantalla.
+function applyKnockback(scene, player) {
+  player.prog -= PROG_KNOCKBACK;
+  player.paralyzed = PARALYZE_DURATION;
+  player.jumping = false;
+  player.jumpCharging = false;
+  player.jumpZ = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +648,7 @@ function createStartScreen(scene) {
     targets: startText, alpha: 0.15, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
   });
 
-  c.add(scene.add.text(W / 2, H - 28, 'P1: A/D mover   U saltar   I empujar     P2: ←/→ mover   R saltar   T empujar', {
+  c.add(scene.add.text(W / 2, H - 28, 'P1: WASD mover   U saltar   I empujar     P2: Flechas mover   R saltar   T empujar', {
     fontFamily: 'monospace', fontSize: '10px', color: '#444444',
   }).setOrigin(0.5));
 
@@ -334,9 +704,22 @@ function startGame(scene) {
   scene.phase = 'playing';
   scene.gameState.speed = 200;
   scene.gameState.distance = 0;
+  scene.gameState.spawnTimer = 1.2;
+  scene.obstacles = [];
+  if (scene.obstacleGraphics) scene.obstacleGraphics.clear();
 
-  scene.players.p1.alive = true;
-  scene.players.p2.alive = true;
+  for (const player of [scene.players.p1, scene.players.p2]) {
+    player.alive = true;
+    player.eliminatedBy = null;
+    player.jumping = false;
+    player.jumpCharging = false;
+    player.jumpHeld = 0;
+    player.jumpElapsed = 0;
+    player.jumpDuration = 0;
+    player.jumpZ = 0;
+    player.prog = 0;
+    player.paralyzed = 0;
+  }
   scene.players.p1.x = W / 2 - 80;
   scene.players.p2.x = W / 2 + 80;
 
@@ -350,6 +733,7 @@ function resetGame(scene) {
   scene.obstacles = [];
   scene.gameState.speed = 0;
   scene.gameState.distance = 0;
+  scene.gameState.spawnTimer = 1.2;
 }
 
 function pauseGame(scene) {
@@ -366,11 +750,15 @@ function resumeGame(scene) {
 // ---------------------------------------------------------------------------
 function updateScroll(scene, delta) {
   const dt = delta / 1000;
-  // Gradually increase speed over time
+  // Acelera progresivamente el mapa
   scene.gameState.speed = Math.min(scene.gameState.speed + 8 * dt, 900);
+  
+  // Aumenta la distancia global
   scene.gameState.distance += scene.gameState.speed * dt;
+  
+  // Dibuja la pista renderizando el desplazamiento de izquierda-arriba
+  renderTrack(scene, scene.gameState.distance); 
 }
-
 // ---------------------------------------------------------------------------
 // Player movement, jump, drift, push
 // ---------------------------------------------------------------------------
@@ -381,52 +769,128 @@ function updatePlayers(scene, delta, time) {
   handlePlayerInput(scene, p1, 'P1', dt);
   handlePlayerInput(scene, p2, 'P2', dt);
   resolvePlayerCollision(scene, p1, p2);
+
+  // Si el rezago (empujones acumulados hacia atrás) es demasiado, el jugador
+  // queda fuera de pantalla por arriba y pierde — sin necesidad de un solo golpe fatal.
+  for (const player of [p1, p2]) {
+    if (player.alive && player.prog < PROG_ELIMINATE) {
+      player.alive = false;
+      player.eliminatedBy = 'trail';
+    }
+  }
+
   renderPlayers(scene);
 }
+
+// Rango de movimiento voluntario adelante/atrás (el empujón de un obstáculo
+// SÍ puede mandarte más atrás de este límite; sólo avanzando lo recuperás).
+const PROG_MOVE_MIN = -60;
+const PROG_MOVE_MAX = 60;
+const PROG_KNOCKBACK = 50;     // cuánto te manda hacia atrás un obstáculo fallado
+const PROG_ELIMINATE = -170;   // más atrás que esto = salís de pantalla, perdés
+const PARALYZE_DURATION = 0.5; // segundos paralizado tras un golpe
 
 function handlePlayerInput(scene, player, prefix, dt) {
   if (!player.alive) return;
 
-  const speed = 260;
-  let dx = 0;
-
-  if (held[prefix + '_L']) dx -= 1;
-  if (held[prefix + '_R']) dx += 1;
-
-  player.x = Phaser.Math.Clamp(player.x + dx * speed * dt, 60, W - 60);
-
-  // Jump — hold for higher jump (TODO: implement arc over obstacle)
-  if (held[prefix + '_1']) player.jumpHeld += dt;
-  if (consumePressed(prefix + '_1')) {
-    player.jumping = true;
-    // jumpHeld determines jump height
+  if (player.paralyzed > 0) {
+    player.paralyzed = Math.max(0, player.paralyzed - dt);
   }
 
-  // Push
-  if (consumePressed(prefix + '_2')) {
-    player.pushing = true;
-    // TODO: apply impulse to opponent
+  const latSpeed = 220;  // Velocidad de esquive lateral
+  const progSpeed = 170; // Velocidad de avance/retroceso
+
+  // Mientras está paralizado (recién golpeado) no responde a los controles
+  if (player.paralyzed <= 0) {
+    let dLat = 0;
+    // Izquierda te mueve hacia el andén (arriba-derecha visualmente en la perpendicular)
+    if (held[prefix + '_L']) dLat -= 1;
+    // Derecha te mueve hacia el barranco (abajo-izquierda visualmente en la perpendicular)
+    if (held[prefix + '_R']) dLat += 1;
+    if (dLat !== 0) {
+      player.lat = Phaser.Math.Clamp(player.lat + dLat * latSpeed * dt, -85, 85);
+    }
+
+    let dProg = 0;
+    if (held[prefix + '_U']) dProg += 1; // adelante: te adelantás en la bajada
+    if (held[prefix + '_D']) dProg -= 1; // atrás: te rezagás a propósito
+    if (dProg !== 0) {
+      // El movimiento voluntario respeta el rango normal; si venís de un
+      // empujón más atrás de ese rango, primero tenés que remontar hasta él.
+      player.prog = Phaser.Math.Clamp(player.prog + dProg * progSpeed * dt, PROG_MOVE_MIN, PROG_MOVE_MAX);
+    }
   }
+
+  // Convertir 'lat' + 'prog' en coordenadas de pantalla diagonales
+  const baseX = W / 2; // 400
+  const baseY = baseX * 0.5 + 225; // 425 (centro de la pista)
+
+  // Eje lateral (perpendicular a la pista)
+  player.x = baseX + player.lat * (-2);
+  player.y = baseY + player.lat * (1);
+  // Eje de avance/retroceso (paralelo a la pendiente de la pista, misma m = 0.5)
+  player.x += player.prog * 1;
+  player.y += player.prog * 0.5;
+
+  if (player.paralyzed > 0) return; // no puede saltar mientras está aturdido
+
+  // --- Salto variable: mantené presionado para cargar, soltá para saltar ---
+  // Hueco (obstáculo pequeño) = toque corto. Botellas+borracho (grande) = carga larga.
+  const JUMP_MIN_DURATION = 0.22;   // salto corto (toque rápido)
+  const JUMP_MAX_DURATION = 0.85;   // salto largo (carga máxima)
+  const JUMP_MAX_CHARGE   = 0.6;    // segundos de carga para llegar al salto máximo
+
+  if (consumePressed(prefix + '_1') && !player.jumping) {
+    player.jumpCharging = true;
+    player.jumpHeld = 0;
+  }
+  if (player.jumpCharging) {
+    if (held[prefix + '_1']) {
+      player.jumpHeld = Math.min(player.jumpHeld + dt, JUMP_MAX_CHARGE);
+    } else {
+      // Soltó el botón: despega con una duración proporcional a la carga
+      const t = player.jumpHeld / JUMP_MAX_CHARGE;
+      player.jumpDuration = Phaser.Math.Linear(JUMP_MIN_DURATION, JUMP_MAX_DURATION, t);
+      player.jumpElapsed = 0;
+      player.jumping = true;
+      player.jumpCharging = false;
+    }
+  }
+
+  if (player.jumping) {
+    player.jumpElapsed += dt;
+    if (player.jumpElapsed >= player.jumpDuration) {
+      player.jumping = false;
+      player.jumpZ = 0;
+    } else {
+      // Arco parabólico simple (0 → 1 → 0) para la altura visual
+      player.jumpZ = Math.sin(Math.PI * (player.jumpElapsed / player.jumpDuration));
+    }
+  }
+}
+
+// Duración de salto necesaria para "limpiar" cada tipo de obstáculo
+const JUMP_REQUIRED = { hole: 0.22, drunk: 0.55 };
+
+function isClearingJump(player, obstacleType) {
+  return player.jumping && player.jumpDuration >= JUMP_REQUIRED[obstacleType];
 }
 
 function resolvePlayerCollision(scene, p1, p2) {
-  // Block overlap: players can't occupy same horizontal space
-  const minDist = 40;
-  const diff = p1.x - p2.x;
-  if (Math.abs(diff) < minDist) {
-    const push = (minDist - Math.abs(diff)) / 2;
-    if (diff > 0) { p1.x += push; p2.x -= push; }
-    else { p1.x -= push; p2.x += push; }
-    p1.x = Phaser.Math.Clamp(p1.x, 60, W - 60);
-    p2.x = Phaser.Math.Clamp(p2.x, 60, W - 60);
+  // Las colisiones se resuelven en el eje lateral, como antes — el nuevo eje
+  // de avance/retroceso no bloquea entre jugadores, sólo el lateral.
+  const minLatDist = 40; // Ancho lateral de la canasta
+  const diff = p1.lat - p2.lat;
+  
+  if (Math.abs(diff) < minLatDist) {
+    const push = (minLatDist - Math.abs(diff)) / 2;
+    if (diff > 0) { p1.lat += push; p2.lat -= push; }
+    else { p1.lat -= push; p2.lat += push; }
+    
+    // Asegurar que un choque no los empuje fuera del puente
+    p1.lat = Phaser.Math.Clamp(p1.lat, -85, 85);
+    p2.lat = Phaser.Math.Clamp(p2.lat, -85, 85);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Obstacles
-// ---------------------------------------------------------------------------
-function updateObstacles(scene, delta) {
-  // TODO: spawn and scroll obstacles; check collisions with players
 }
 
 // ---------------------------------------------------------------------------
