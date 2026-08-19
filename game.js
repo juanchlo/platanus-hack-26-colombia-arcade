@@ -80,6 +80,94 @@ async function storageGet(key) { return getStorage().get(key); }
 async function storageSet(key, val) { return getStorage().set(key, val); }
 
 // ---------------------------------------------------------------------------
+// Retro Scoreboard & Leaderboard (Hall of Fame)
+// ---------------------------------------------------------------------------
+const DEFAULT_SCORES = [
+  { rank: 1, name: 'NEA', score: 45000, dist: 1250 },
+  { rank: 2, name: 'CHG', score: 38200, dist: 1040 },
+  { rank: 3, name: 'CAL', score: 29500, dist: 850 },
+  { rank: 4, name: 'SAO', score: 21000, dist: 620 },
+  { rank: 5, name: 'PLT', score: 15000, dist: 480 },
+];
+
+function padScore(num) {
+  const s = Math.max(0, Math.round(num || 0)).toString();
+  return s.padStart(6, '0');
+}
+
+function showScorePopup(scene, x, y, text, color) {
+  const t = scene.add.text(x, y, text, {
+    fontFamily: 'monospace',
+    fontSize: '15px',
+    color: color || '#ffdd00',
+    fontStyle: 'bold',
+    stroke: '#000000',
+    strokeThickness: 3,
+  }).setOrigin(0.5).setDepth(15);
+
+  scene.tweens.add({
+    targets: t,
+    y: y - 40,
+    alpha: 0,
+    scale: 1.25,
+    duration: 850,
+    ease: 'Cubic.easeOut',
+    onComplete: () => t.destroy(),
+  });
+}
+
+async function loadLeaderboard(scene) {
+  try {
+    const res = await storageGet(STORAGE_KEY);
+    if (res && res.found && Array.isArray(res.value) && res.value.length > 0) {
+      scene.gameState.leaderboard = res.value;
+    } else {
+      scene.gameState.leaderboard = JSON.parse(JSON.stringify(DEFAULT_SCORES));
+    }
+  } catch (_) {
+    scene.gameState.leaderboard = JSON.parse(JSON.stringify(DEFAULT_SCORES));
+  }
+  scene.gameState.highScore = scene.gameState.leaderboard[0] ? scene.gameState.leaderboard[0].score : 45000;
+  if (scene.hud && scene.hud.hiScore) {
+    scene.hud.hiScore.setText(`HIGH SCORE\n${padScore(scene.gameState.highScore)}`);
+  }
+  if (scene.startHiScoreText) {
+    scene.startHiScoreText.setText(`TOP RECORD: ${padScore(scene.gameState.highScore)} · ${scene.gameState.leaderboard[0].name}`);
+  }
+}
+
+async function recordHighScore(scene, p1Score, p2Score, distance) {
+  const dist = Math.round(distance);
+  let lb = scene.gameState.leaderboard || JSON.parse(JSON.stringify(DEFAULT_SCORES));
+  let achievedNewRecord = false;
+
+  const candidates = [
+    { name: 'P1-NEA', score: Math.round(p1Score), dist },
+    { name: 'P2-CHG', score: Math.round(p2Score), dist },
+  ];
+
+  for (const cand of candidates) {
+    if (cand.score > 0 && (lb.length < 5 || cand.score > lb[lb.length - 1].score)) {
+      lb.push(cand);
+      achievedNewRecord = true;
+    }
+  }
+
+  if (achievedNewRecord) {
+    lb.sort((a, b) => b.score - a.score);
+    lb = lb.slice(0, 5);
+    for (let i = 0; i < lb.length; i++) lb[i].rank = i + 1;
+    scene.gameState.leaderboard = lb;
+    scene.gameState.highScore = lb[0].score;
+    try {
+      await storageSet(STORAGE_KEY, lb);
+    } catch (_) {}
+  }
+
+  return { leaderboard: lb, isNewHigh: achievedNewRecord };
+}
+
+// ---------------------------------------------------------------------------
 // Phaser config
 // ---------------------------------------------------------------------------
 const config = {
@@ -110,6 +198,8 @@ function create() {
     distance: 0,      // total distance scrolled
     elapsed: 0,       // tiempo transcurrido (segundos)
     musicStarted: false,
+    highScore: 45000,
+    leaderboard: null,
   };
 
   // Build all layers (start hidden as needed)
@@ -121,6 +211,7 @@ function create() {
   createStartScreen(scene);
   createGameOverScreen(scene);
 
+  loadLeaderboard(scene);
   showStartScreen(scene);
 }
 
@@ -374,6 +465,7 @@ function createPlayers(scene) {
       lat: 40,  // Posición lateral inicial (izquierda visualmente)
       prog: 0,  // Posición adelante(+)/atrás(-) respecto a la línea del pelotón
       x: 0, y: 0, 
+      score: 0,
       jumping: false, jumpTimer: 0, jumpLanding: false, landTimer: 0, landStartZ: 0, jumpZ: 0,
       pushing: false,
       paralyzed: 0,
@@ -385,6 +477,7 @@ function createPlayers(scene) {
       lat: -40, // Posición lateral inicial (derecha visualmente)
       prog: 0,
       x: 0, y: 0,
+      score: 0,
       jumping: false, jumpTimer: 0, jumpLanding: false, landTimer: 0, landStartZ: 0, jumpZ: 0,
       pushing: false,
       paralyzed: 0,
@@ -1059,6 +1152,8 @@ function checkObstacleProximity(scene, ob, player, flagKey) {
       } else if (ob.x < trackX - hitRadius + 10) {
         // Pasó exitosamente todo el tramo del puente
         ob[flagKey] = true;
+        player.score += 600;
+        showScorePopup(scene, player.x, player.y - 35, '+600 DRIFT!', '#00ffff');
       }
     }
   } else {
@@ -1075,6 +1170,12 @@ function checkObstacleProximity(scene, ob, player, flagKey) {
         // En el aire esquivando el obstáculo: seguro mientras se mantenga arriba
         if (ob.x < player.x - 5) {
           ob[flagKey] = true;
+          const isHole = ob.type === 'hole';
+          const pts = isHole ? 150 : 350;
+          const label = isHole ? '+150' : '+350 SALTO!';
+          const color = isHole ? '#00ff88' : '#ffdd00';
+          player.score += pts;
+          showScorePopup(scene, player.x, player.y - 35, label, color);
         }
       } else {
         // En el suelo sobre el obstáculo -> golpe
@@ -1113,14 +1214,44 @@ function applyKnockback(scene, player) {
 // ---------------------------------------------------------------------------
 function createHud(scene) {
   scene.hud = {};
-  scene.hud.p1Label = scene.add.text(20, 16, 'P1', { fontFamily: 'monospace', fontSize: '20px', color: '#ff4444' }).setDepth(10);
-  scene.hud.p2Label = scene.add.text(W - 20, 16, 'P2', { fontFamily: 'monospace', fontSize: '20px', color: '#44aaff' }).setOrigin(1, 0).setDepth(10);
-  scene.hud.speed = scene.add.text(W / 2, 16, '', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff' }).setOrigin(0.5, 0).setDepth(10);
+
+  // P1 1UP (Neon Red/Pink)
+  scene.hud.p1Score = scene.add.text(20, 10, '1UP NEA\n000000', {
+    fontFamily: 'monospace', fontSize: '14px', color: '#ff4466', fontStyle: 'bold', lineSpacing: 2,
+    stroke: '#000000', strokeThickness: 3,
+  }).setDepth(10);
+
+  // HIGH SCORE (Flashing Gold/Yellow in Center)
+  scene.hud.hiScore = scene.add.text(W / 2, 10, 'HIGH SCORE\n045000', {
+    fontFamily: 'monospace', fontSize: '14px', color: '#ffd700', fontStyle: 'bold', align: 'center', lineSpacing: 2,
+    stroke: '#000000', strokeThickness: 3,
+  }).setOrigin(0.5, 0).setDepth(10);
+
+  // P2 2UP (Neon Cyan/Blue)
+  scene.hud.p2Score = scene.add.text(W - 20, 10, '2UP CHG\n000000', {
+    fontFamily: 'monospace', fontSize: '14px', color: '#00ccff', fontStyle: 'bold', align: 'right', lineSpacing: 2,
+    stroke: '#000000', strokeThickness: 3,
+  }).setOrigin(1, 0).setDepth(10);
+
+  // Bottom Speed & Distance ticker
+  scene.hud.speedDist = scene.add.text(W / 2, H - 18, '⚡ 200 km/h   🚩 0 m', {
+    fontFamily: 'monospace', fontSize: '12px', color: '#ffffff', fontStyle: 'bold',
+    stroke: '#000000', strokeThickness: 3,
+  }).setOrigin(0.5).setDepth(10);
 }
 
 function updateHud(scene) {
   const spd = Math.round(scene.gameState.speed);
-  scene.hud.speed.setText(`${spd} km/h`);
+  const dst = Math.round(scene.gameState.distance);
+  const p1s = padScore(scene.players.p1.score);
+  const p2s = padScore(scene.players.p2.score);
+  const topScore = Math.max(scene.gameState.highScore || 45000, scene.players.p1.score, scene.players.p2.score);
+  const hi = padScore(topScore);
+
+  scene.hud.p1Score.setText(`1UP NEA\n${p1s}`);
+  scene.hud.p2Score.setText(`2UP CHG\n${p2s}`);
+  scene.hud.hiScore.setText(`HIGH SCORE\n${hi}`);
+  scene.hud.speedDist.setText(`⚡ ${spd} km/h   🚩 ${dst} m`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1130,35 +1261,41 @@ function createStartScreen(scene) {
   const c = scene.add.container(0, 0).setDepth(20);
   c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x080810, 0.93));
 
-  c.add(scene.add.text(W / 2, 72, 'PLATANUS HACK 26', {
+  c.add(scene.add.text(W / 2, 60, 'PLATANUS HACK 26', {
     fontFamily: 'monospace', fontSize: '13px', color: '#886600',
   }).setOrigin(0.5));
-  c.add(scene.add.text(W / 2, 100, 'SAN ANTONIO DRIFT', {
-    fontFamily: 'monospace', fontSize: '40px', color: '#ffdd00', fontStyle: 'bold',
+  c.add(scene.add.text(W / 2, 88, 'SAN ANTONIO DRIFT', {
+    fontFamily: 'monospace', fontSize: '38px', color: '#ffdd00', fontStyle: 'bold',
   }).setOrigin(0.5));
-  c.add(scene.add.text(W / 2, 158, 'BARRIO SAN ANTONIO · CALI, COLOMBIA', {
+  c.add(scene.add.text(W / 2, 142, 'BARRIO SAN ANTONIO · CALI, COLOMBIA', {
     fontFamily: 'monospace', fontSize: '12px', color: '#666644',
   }).setOrigin(0.5));
 
+  // High Score Attract Mode Ticker
+  scene.startHiScoreText = scene.add.text(W / 2, 172, 'TOP RECORD: 045000 (NEA)', {
+    fontFamily: 'monospace', fontSize: '12px', color: '#00ffcc', fontStyle: 'bold',
+  }).setOrigin(0.5);
+  c.add(scene.startHiScoreText);
+
   // Crate + character preview
   const previewGfx = scene.add.graphics();
-  const crateY = 292;
+  const crateY = 285;
   const cx1 = W / 2 - 72;
   const cx2 = W / 2 + 72;
   drawBeerCrate(previewGfx, cx1, crateY, 4);
   drawNea(previewGfx, cx1, crateY, 4);           // P1 = Nea
   drawBeerCrate(previewGfx, cx2, crateY, 4);
-  drawChango(previewGfx, cx2, crateY, 4);          // P2 = Changó
+  drawChango(previewGfx, cx2, crateY, 4);        // P2 = Changó
   c.add(previewGfx);
 
-  c.add(scene.add.text(cx1, 320, 'P1  NEA', {
+  c.add(scene.add.text(cx1, 315, 'P1  NEA', {
     fontFamily: 'monospace', fontSize: '11px', color: '#ff5555',
   }).setOrigin(0.5));
-  c.add(scene.add.text(cx2, 320, 'P2  CHANGO', {
+  c.add(scene.add.text(cx2, 315, 'P2  CHANGO', {
     fontFamily: 'monospace', fontSize: '11px', color: '#5599ff',
   }).setOrigin(0.5));
 
-  const startText = scene.add.text(W / 2, 368, 'PRESS START', {
+  const startText = scene.add.text(W / 2, 360, 'PRESS START', {
     fontFamily: 'monospace', fontSize: '26px', color: '#ffffff', fontStyle: 'bold',
   }).setOrigin(0.5);
   c.add(startText);
@@ -1186,24 +1323,103 @@ function updateStartScreen(scene, time) {
 }
 
 // ---------------------------------------------------------------------------
-// Game over screen
+// Game over screen — Retro Scoreboard / Hall of Fame
 // ---------------------------------------------------------------------------
 function createGameOverScreen(scene) {
   const c = scene.add.container(0, 0).setDepth(20);
-  c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x0a0a1a, 0.92));
-  scene.goTitle = scene.add.text(W / 2, 180, '', { fontFamily: 'monospace', fontSize: '32px', color: '#ffdd00', fontStyle: 'bold' }).setOrigin(0.5);
-  scene.goSub = scene.add.text(W / 2, 240, '', { fontFamily: 'monospace', fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
+  c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x050512, 0.95));
+
+  // Marco decorativo estilo gabinete arcade retro
+  const bgGfx = scene.add.graphics();
+  bgGfx.lineStyle(2, 0xffdd00, 0.8);
+  bgGfx.strokeRect(36, 20, W - 72, H - 40);
+  bgGfx.lineStyle(1, 0x00ccff, 0.5);
+  bgGfx.strokeRect(40, 24, W - 80, H - 48);
+  c.add(bgGfx);
+
+  scene.goTitle = scene.add.text(W / 2, 52, '', {
+    fontFamily: 'monospace', fontSize: '28px', color: '#ffdd00', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
+  }).setOrigin(0.5);
   c.add(scene.goTitle);
-  c.add(scene.goSub);
-  c.add(scene.add.text(W / 2, H - 50, 'PRESS START TO PLAY AGAIN', { fontFamily: 'monospace', fontSize: '14px', color: '#aaaaaa' }).setOrigin(0.5));
+
+  scene.goScores = scene.add.text(W / 2, 88, '', {
+    fontFamily: 'monospace', fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
+  }).setOrigin(0.5);
+  c.add(scene.goScores);
+
+  scene.goBanner = scene.add.text(W / 2, 116, '', {
+    fontFamily: 'monospace', fontSize: '13px', color: '#ff44aa', fontStyle: 'bold',
+  }).setOrigin(0.5);
+  c.add(scene.goBanner);
+
+  // Título de la tabla de récords
+  c.add(scene.add.text(W / 2, 150, '★ TABLA DE RÉCORDS · TOP 5 ★', {
+    fontFamily: 'monospace', fontSize: '15px', color: '#00ffcc', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  c.add(scene.add.text(W / 2, 180, 'POS   JUGADOR    PUNTAJE    DISTANCIA', {
+    fontFamily: 'monospace', fontSize: '12px', color: '#8888aa', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  // Filas para el TOP 5
+  scene.goScoreRows = [];
+  const rankColors = ['#ffd700', '#e0e0e0', '#cd7f32', '#00ffff', '#ffff66'];
+  for (let i = 0; i < 5; i++) {
+    const row = scene.add.text(W / 2, 212 + i * 32, '', {
+      fontFamily: 'monospace', fontSize: '14px', color: rankColors[i], fontStyle: 'bold',
+    }).setOrigin(0.5);
+    scene.goScoreRows.push(row);
+    c.add(row);
+  }
+
+  const restartPrompt = scene.add.text(W / 2, H - 42, 'PRESS START TO RACE AGAIN', {
+    fontFamily: 'monospace', fontSize: '15px', color: '#ffffff', fontStyle: 'bold',
+  }).setOrigin(0.5);
+  c.add(restartPrompt);
+  scene.tweens.add({
+    targets: restartPrompt, alpha: 0.2, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+  });
+
   scene.gameOverScreen = c;
   c.setVisible(false);
 }
 
-function showGameOver(scene, winnerLabel) {
+async function showGameOver(scene, winnerLabel) {
   scene.phase = 'gameover';
-  scene.goTitle.setText(winnerLabel + ' WINS!');
-  scene.goSub.setText(`Distance: ${Math.round(scene.gameState.distance)} m`);
+  const p1s = Math.round(scene.players.p1.score);
+  const p2s = Math.round(scene.players.p2.score);
+  const dist = Math.round(scene.gameState.distance);
+
+  let winText = 'NOBODY WINS!';
+  if (winnerLabel === 'P1') winText = 'P1 (NEA) WINS!';
+  else if (winnerLabel === 'P2') winText = 'P2 (CHANGÓ) WINS!';
+  scene.goTitle.setText(winText);
+
+  scene.goScores.setText(`P1: ${padScore(p1s)} PTS  |  P2: ${padScore(p2s)} PTS  |  ${dist} METROS`);
+
+  // Actualizar tabla persistente de récords
+  const res = await recordHighScore(scene, p1s, p2s, dist);
+
+  if (res.isNewHigh) {
+    scene.goBanner.setText('🎉 ¡NUEVO RÉCORD REGISTRADO EN EL SCOREBOARD! 🎉');
+    scene.goBanner.setColor('#ff3399');
+  } else {
+    scene.goBanner.setText('MEJORES MARCAS EN SAN ANTONIO');
+    scene.goBanner.setColor('#8888bb');
+  }
+
+  const rankLabels = ['1ST', '2ND', '3RD', '4TH', '5TH'];
+  for (let i = 0; i < 5; i++) {
+    const item = res.leaderboard[i];
+    if (item && scene.goScoreRows[i]) {
+      const rank = rankLabels[i];
+      const name = (item.name || '---').padEnd(10, ' ');
+      const sc = padScore(item.score);
+      const d = `${item.dist || 0}m`.padStart(8, ' ');
+      scene.goScoreRows[i].setText(`${rank}   ${name} ${sc}   ${d}`);
+    }
+  }
+
   scene.gameOverScreen.setVisible(true);
 }
 
@@ -1230,6 +1446,7 @@ function startGame(scene) {
   for (const player of [scene.players.p1, scene.players.p2]) {
     player.alive = true;
     player.eliminatedBy = null;
+    player.score = 0;
     player.jumping = false;
     player.jumpLanding = false;
     player.jumpTimer = 0;
@@ -1281,6 +1498,12 @@ function updateScroll(scene, delta) {
   
   // Aumenta la distancia global
   scene.gameState.distance += scene.gameState.speed * dt;
+
+  // Puntuación acumulada por distancia y velocidad
+  const speedMult = 1 + (scene.gameState.speed / 500);
+  const distPts = scene.gameState.speed * dt * 0.4 * speedMult;
+  if (scene.players.p1.alive) scene.players.p1.score += distPts;
+  if (scene.players.p2.alive) scene.players.p2.score += distPts;
   
   // Dibuja la pista renderizando el desplazamiento de izquierda-arriba
   renderTrack(scene, scene.gameState.distance); 
@@ -1412,6 +1635,22 @@ function handlePlayerInput(scene, player, prefix, dt) {
       } else {
         const t = player.landTimer / LAND_DURATION;
         player.jumpZ = player.landStartZ * Math.cos(t * (Math.PI / 2));
+      }
+    }
+  }
+
+  // --- Empuje (Push) con botón de acción 2 ('I' para P1, 'T' para P2) ---
+  if (consumePressed(prefix + '_2') && player.paralyzed <= 0) {
+    const opp = (prefix === 'P1') ? scene.players.p2 : scene.players.p1;
+    if (opp && opp.alive) {
+      const dLat = player.lat - opp.lat;
+      const dProg = player.prog - opp.prog;
+      if (Math.abs(dLat) < 55 && Math.abs(dProg) < 55) {
+        const pushDir = dLat >= 0 ? -1 : 1;
+        opp.lat = Phaser.Math.Clamp(opp.lat + pushDir * 38, LAT_MIN, LAT_MAX);
+        opp.paralyzed = 0.35;
+        player.score += 200;
+        showScorePopup(scene, player.x, player.y - 35, '+200 EMPUJÓN!', '#ff44aa');
       }
     }
   }
