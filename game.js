@@ -309,15 +309,15 @@ function createPlayers(scene) {
   renderPlayers(scene);
 }
 
-function renderPlayers(scene) {
+function renderPlayers(scene, time, speed) {
   const gfx = scene.playerGraphics;
   gfx.clear();
   const { p1, p2 } = scene.players;
-  renderOnePlayer(gfx, p1);
-  renderOnePlayer(gfx, p2);
+  renderOnePlayer(gfx, p1, time, speed);
+  renderOnePlayer(gfx, p2, time, speed);
 }
 
-function renderOnePlayer(gfx, player) {
+function renderOnePlayer(gfx, player, time, speed) {
   if (!player.alive) return;
 
   // Sombra en el piso (se achica mientras el jugador está en el aire)
@@ -334,7 +334,7 @@ function renderOnePlayer(gfx, player) {
   // La canasta se eleva visualmente durante el salto (eje Z falso)
   const liftY = player.y - player.jumpZ * 46;
   drawBeerCrate(gfx, player.x, liftY, 3);
-  if (player.label === 'P1') drawNea(gfx, player.x, liftY, 3);
+  if (player.label === 'P1') drawNea(gfx, player.x, liftY, 3, time, speed);
   else drawChango(gfx, player.x, liftY, 3);
 }
 
@@ -779,7 +779,7 @@ function updatePlayers(scene, delta, time) {
     }
   }
 
-  renderPlayers(scene);
+  renderPlayers(scene, time, scene.gameState.speed);
 }
 
 // Rango de movimiento voluntario adelante/atrás (el empujón de un obstáculo
@@ -917,69 +917,74 @@ function checkPlayerElimination(scene) {
 //
 // cx, cy = same anchor as drawBeerCrate (center of front face)
 // ---------------------------------------------------------------------------
-function drawNea(gfx, cx, cy, scale) {
+function drawNea(gfx, cx, cy, scale, time, speed) {
   const s = scale || 3;
   const r = (v) => Math.round(v * s);
-
   const baseY = cy - r(3.5);
   const bx = cx;
 
-  // ── TENIS VERDE (apunta hacia la DERECHA — dirección de viaje)
+  // ── Animación idle
+  const t = time || 0;
+  const spd = speed || 0;
+  const leanX = Math.round((spd / 900) * 18);             // 0–18px inclinación al frente
+  const hairWave = Math.round(Math.sin(t * 0.005) * 12);  // ±12px onda horizontal coleta
+  const hairBob  = Math.round(Math.sin(t * 0.005 + 0.8) * 4); // ±4px onda vertical coleta
+  const blink = (t % 3000) < 100;                         // parpadeo cada 3 s × 100 ms
+  const ubx = bx + leanX;                                 // pivot cuerpo superior
+
+  // ── TENIS VERDE (cuerpo inferior — sin lean)
   gfx.fillStyle(0x33dd44, 1);
-  gfx.fillRect(bx + r(1.3), baseY + r(1.5), r(4.2), r(1.6));    // cuerpo del tenis
+  gfx.fillRect(bx + r(1.3), baseY + r(1.5), r(4.2), r(1.6));
   gfx.fillStyle(0x1a8830, 1);
-  gfx.fillRect(bx + r(1.1), baseY + r(2.9), r(4.6), r(0.6));    // suela
+  gfx.fillRect(bx + r(1.1), baseY + r(2.9), r(4.6), r(0.6));
   gfx.fillStyle(0xaaeeaa, 1);
-  gfx.fillRect(bx + r(3.3), baseY + r(1.5), r(1.2), r(0.6));    // lengüeta
+  gfx.fillRect(bx + r(3.3), baseY + r(1.5), r(1.2), r(0.6));
 
-  // ── PIERNA (perfil — muslo horizontal →der, pantorrilla hacia abajo)
+  // ── PIERNA (sin lean)
   gfx.fillStyle(0x111122, 1);
-  gfx.fillRect(bx + r(2.5), baseY + r(0.2), r(2.5), r(1.5));    // pantorrilla
-  gfx.fillRect(bx,          baseY - r(0.5), r(4),   r(1.2));    // muslo → cuerpo
+  gfx.fillRect(bx + r(2.5), baseY + r(0.2), r(2.5), r(1.5));
+  gfx.fillRect(bx,          baseY - r(0.5), r(4),   r(1.2));
 
-  // ── SHORTS (perfil — franja bajo el torso)
+  // ── SHORTS (sin lean)
   gfx.fillStyle(0x1a1a2e, 1);
   gfx.fillRect(bx - r(2.5), baseY - r(1.8), r(4), r(1.8));
 
-  // ── RIÑONERA AZUL (lado izquierdo — visible al espectador)
+  // ── RIÑONERA AZUL (cuerpo superior — con lean)
   gfx.fillStyle(0x2288ff, 1);
-  gfx.fillRect(bx - r(3.8), baseY - r(3.2), r(2.8), r(1.5));
+  gfx.fillRect(ubx - r(3.8), baseY - r(3.2), r(2.8), r(1.5));
   gfx.fillStyle(0x88aaff, 1);
-  gfx.fillRect(bx - r(2.7), baseY - r(3.1), r(1),   r(1.3));   // hebilla
+  gfx.fillRect(ubx - r(2.7), baseY - r(3.1), r(1),   r(1.3));
 
-  // ── BRAZO IZQUIERDO (apoyado hacia adelante-derecha sobre canasta)
+  // ── BRAZO IZQUIERDO (con lean)
   gfx.fillStyle(0xb56030, 1);
-  gfx.fillRect(bx,          baseY - r(6.5), r(1.5), r(1.5));   // hombro
-  gfx.fillRect(bx + r(1.4), baseY - r(6.3), r(2.8), r(1.3));   // brazo superior →der
-  gfx.fillRect(bx + r(3.7), baseY - r(6.3), r(1.3), r(3.8));   // antebrazo → abajo
+  gfx.fillRect(ubx,          baseY - r(6.5), r(1.5), r(1.5));
+  gfx.fillRect(ubx + r(1.4), baseY - r(6.3), r(2.8), r(1.3));
+  gfx.fillRect(ubx + r(3.7), baseY - r(6.3), r(1.3), r(3.8));
   gfx.fillStyle(0xc47840, 1);
-  gfx.fillRect(bx + r(3.4), baseY - r(2.5), r(1.8), r(1));     // mano
+  gfx.fillRect(ubx + r(3.4), baseY - r(2.5), r(1.8), r(1));
 
-  // ── TORSO / CAMISA FUCSIA (perfil — más angosta que vista frontal)
+  // ── TORSO FUCSIA (con lean)
   gfx.fillStyle(0xdd1180, 1);
-  gfx.fillRect(bx - r(2.7), baseY - r(6.8), r(4.2), r(5.5));
-  // Borde delantero (lado derecho del torso = frente del personaje)
+  gfx.fillRect(ubx - r(2.7), baseY - r(6.8), r(4.2), r(5.5));
   gfx.fillStyle(0xbb0f70, 1);
-  gfx.fillRect(bx + r(0.7), baseY - r(6.8), r(0.8), r(5.5));
-  // Logo del pecho
+  gfx.fillRect(ubx + r(0.7), baseY - r(6.8), r(0.8), r(5.5));
   gfx.fillStyle(0x44bbff, 1);
-  gfx.fillCircle(bx - r(1), baseY - r(4.8), r(0.9));
+  gfx.fillCircle(ubx - r(1), baseY - r(4.8), r(0.9));
   gfx.fillStyle(0xffee44, 1);
-  gfx.fillCircle(bx - r(1), baseY - r(4.8), r(0.45));
+  gfx.fillCircle(ubx - r(1), baseY - r(4.8), r(0.45));
 
-  // ── CUELLO
+  // ── CUELLO (con lean)
   gfx.fillStyle(0xc47840, 1);
-  gfx.fillRect(bx - r(2.1), baseY - r(8.2), r(1.6), r(1.8));
+  gfx.fillRect(ubx - r(2.1), baseY - r(8.2), r(1.6), r(1.8));
 
-  // ── CABEZA (perfil izquierdo — cara apuntando a la DERECHA)
-  const headR = r(2.2);
-  const headX = bx - r(1.3);   // ligeramente a la izquierda del torso en perfil
+  // ── CABEZA (con lean)
+  const headX = ubx - r(1.3);
   const headY = baseY - r(10.4);
 
   gfx.fillStyle(0xc47840, 1);
-  gfx.fillCircle(headX, headY, headR);
+  gfx.fillCircle(headX, headY, r(2.2));
 
-  // NARIZ (puntiaguda hacia la DERECHA — perfil cartoon)
+  // NARIZ →derecha
   gfx.fillStyle(0x9e5520, 1);
   gfx.fillTriangle(
     headX + r(1.9), headY + r(0.1),
@@ -987,33 +992,44 @@ function drawNea(gfx, cx, cy, scale) {
     headX + r(1.9), headY + r(1.3),
   );
 
-  // OJO izquierdo (de perfil — línea pequeña, expresión tranquila)
+  // OJO — parpadeo
   gfx.fillStyle(0x1a0800, 1);
-  gfx.fillRect(headX + r(0.3), headY - r(0.2), r(1.2), r(0.35));
+  if (blink) {
+    gfx.fillRect(headX + r(0.3), headY - r(0.05), r(1.2), r(0.12));  // ojo cerrado
+  } else {
+    gfx.fillRect(headX + r(0.3), headY - r(0.2),  r(1.2), r(0.35));  // ojo abierto
+  }
 
-  // ── PELO NEGRO (corte "7" — largo cuelga hacia la IZQUIERDA = atrás en perfil)
+  // ── PELO NEGRO — coleta ondea como cabello en el viento
   gfx.fillStyle(0x0d0d0d, 1);
-  gfx.fillRect(headX - r(2.6), headY - r(1.8), r(1.8), r(7.5));  // coleta larga (atrás)
-  gfx.fillRect(headX - r(2.3), headY - r(2.3), r(4.5), r(1.1));  // cobertura superior
-  gfx.fillRect(headX - r(2.5), headY - r(3.5), r(1),   r(2));    // spike trasero
-  gfx.fillRect(headX - r(0.5), headY - r(3.8), r(0.8), r(1.8));  // spike superior
+  // Coleta: cuadrilátero — raíz fija a la cabeza, punta oscila ±12px en X y ±4px en Y
+  const hRX = headX - r(2.6);  // root right-x
+  const hRY = headY - r(1.8);  // root y
+  const hW  = r(1.8);          // width
+  const hH  = r(7.5);          // length
+  gfx.fillPoints([
+    { x: hRX,               y: hRY },
+    { x: hRX - hW,          y: hRY },
+    { x: hRX - hW + hairWave, y: hRY + hH + hairBob },
+    { x: hRX + hairWave,      y: hRY + hH + hairBob },
+  ], true);
+  gfx.fillRect(headX - r(2.3), headY - r(2.3), r(4.5), r(1.1));   // cobertura superior
+  // Spike trasero sigue la onda (efecto ±5px)
+  gfx.fillRect(headX - r(2.5) + Math.round(hairWave * 0.4), headY - r(3.5), r(1), r(2));
+  gfx.fillRect(headX - r(0.5), headY - r(3.8), r(0.8), r(1.8));   // spike superior
 
-  // ── GORRA SNAPBACK (perfil, mirando derecha)
+  // ── GORRA SNAPBACK
   const capBot = headY - r(2.2);
-
-  // Corona blanca
   gfx.fillStyle(0xf8f8f8, 1);
   gfx.fillRect(headX - r(3.2), capBot - r(2.8), r(5.5), r(2.8));
-  // Parte trasera redondeada (izquierda = atrás del personaje)
   gfx.fillStyle(0xe8e8f8, 1);
   gfx.fillCircle(headX - r(1.5), capBot - r(2.8), r(2.3));
   gfx.fillStyle(0xf8f8f8, 1);
   gfx.fillRect(headX - r(3.2), capBot - r(2.8), r(5.5), r(2));
-  // Botón superior
   gfx.fillStyle(0xccccdd, 1);
   gfx.fillRect(headX - r(1.1), capBot - r(5.2), r(0.9), r(0.9));
 
-  // ALA VERDE — apunta hacia la DERECHA y hacia arriba ("gorra levantada")
+  // ALA VERDE
   gfx.fillStyle(0x44cc22, 1);
   gfx.fillPoints([
     { x: headX + r(2.3), y: capBot          },
@@ -1021,7 +1037,6 @@ function drawNea(gfx, cx, cy, scale) {
     { x: headX + r(6.8), y: capBot - r(2.4) },
     { x: headX + r(6.8), y: capBot - r(1.3) },
   ], true);
-  // Sombra inferior del ala
   gfx.fillStyle(0x228811, 1);
   gfx.fillPoints([
     { x: headX + r(2.3), y: capBot          },
@@ -1030,7 +1045,7 @@ function drawNea(gfx, cx, cy, scale) {
     { x: headX + r(2.3), y: capBot + r(0.3) },
   ], true);
 
-  // Logo (hoja/flor fucsia en el lateral de la corona — visible de perfil)
+  // Logo gorra
   const logoX = headX - r(1.2);
   const logoY = capBot - r(1.8);
   gfx.fillStyle(0xff44aa, 1);
@@ -1038,7 +1053,7 @@ function drawNea(gfx, cx, cy, scale) {
   gfx.fillTriangle(logoX - r(0.9), logoY - r(0.6), logoX, logoY - r(1.1), logoX - r(0.2), logoY);
   gfx.fillTriangle(logoX + r(0.9), logoY - r(0.6), logoX, logoY - r(1.1), logoX + r(0.2), logoY);
 
-  // ── ARETE DE CRUZ DORADO (oreja izquierda — visible en perfil izquierdo)
+  // ── ARETE DE CRUZ DORADO
   const earX = headX - r(2.1);
   const earY = headY + r(0.5);
   gfx.fillStyle(0xffcc00, 1);
