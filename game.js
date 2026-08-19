@@ -207,8 +207,8 @@ function renderPlayers(scene) {
   const gfx = scene.playerGraphics;
   gfx.clear();
   const { p1, p2 } = scene.players;
-  if (p1.alive) drawBeerCrate(gfx, p1.x, p1.y, 3);
-  if (p2.alive) drawBeerCrate(gfx, p2.x, p2.y, 3);
+  if (p1.alive) { drawBeerCrate(gfx, p1.x, p1.y, 3); drawNea(gfx, p1.x, p1.y, 3); }
+  if (p2.alive) drawBeerCrate(gfx, p2.x, p2.y, 3);  // Diablito: TBD
 }
 
 // ---------------------------------------------------------------------------
@@ -252,20 +252,21 @@ function createStartScreen(scene) {
     fontFamily: 'monospace', fontSize: '12px', color: '#666644',
   }).setOrigin(0.5));
 
-  // Crate preview — two crates representing P1 and P2
+  // Crate + character preview
   const previewGfx = scene.add.graphics();
-  const crateY = 278;
-  const cx1 = W / 2 - 70;
-  const cx2 = W / 2 + 70;
+  const crateY = 292;
+  const cx1 = W / 2 - 72;
+  const cx2 = W / 2 + 72;
   drawBeerCrate(previewGfx, cx1, crateY, 4);
-  drawBeerCrate(previewGfx, cx2, crateY, 4);
+  drawNea(previewGfx, cx1, crateY, 4);           // P1 = Nea
+  drawBeerCrate(previewGfx, cx2, crateY, 4);      // P2 = Diablito (TBD)
   c.add(previewGfx);
 
-  c.add(scene.add.text(cx1, 230, 'P1', {
-    fontFamily: 'monospace', fontSize: '13px', color: '#ff5555', fontStyle: 'bold',
+  c.add(scene.add.text(cx1, 320, 'P1  NEA', {
+    fontFamily: 'monospace', fontSize: '11px', color: '#ff5555',
   }).setOrigin(0.5));
-  c.add(scene.add.text(cx2, 230, 'P2', {
-    fontFamily: 'monospace', fontSize: '13px', color: '#5599ff', fontStyle: 'bold',
+  c.add(scene.add.text(cx2, 320, 'P2  ???', {
+    fontFamily: 'monospace', fontSize: '11px', color: '#5599ff',
   }).setOrigin(0.5));
 
   const startText = scene.add.text(W / 2, 368, 'PRESS START', {
@@ -439,6 +440,145 @@ function checkPlayerElimination(scene) {
   if (bothDead) { showGameOver(scene, 'NOBODY'); return; }
   if (p1Dead)  { showGameOver(scene, 'P2'); return; }
   if (p2Dead)  { showGameOver(scene, 'P1'); return; }
+}
+
+// ---------------------------------------------------------------------------
+// Nea — P1 character (procedural 8-bit pixel art)
+//
+// Vista de PERFIL IZQUIERDO — cara mirando hacia la DERECHA.
+// Espejo exacto del perfil derecho: nariz, gorra, tenis y brazo apuntan
+// a la derecha; coleta cae a la izquierda (atrás); riñonera visible
+// en el lado izquierdo (hacia el espectador).
+//
+// cx, cy = same anchor as drawBeerCrate (center of front face)
+// ---------------------------------------------------------------------------
+function drawNea(gfx, cx, cy, scale) {
+  const s = scale || 3;
+  const r = (v) => Math.round(v * s);
+
+  const baseY = cy - r(3.5);
+  const bx = cx;
+
+  // ── TENIS VERDE (apunta hacia la DERECHA — dirección de viaje)
+  gfx.fillStyle(0x33dd44, 1);
+  gfx.fillRect(bx + r(1.3), baseY + r(1.5), r(4.2), r(1.6));    // cuerpo del tenis
+  gfx.fillStyle(0x1a8830, 1);
+  gfx.fillRect(bx + r(1.1), baseY + r(2.9), r(4.6), r(0.6));    // suela
+  gfx.fillStyle(0xaaeeaa, 1);
+  gfx.fillRect(bx + r(3.3), baseY + r(1.5), r(1.2), r(0.6));    // lengüeta
+
+  // ── PIERNA (perfil — muslo horizontal →der, pantorrilla hacia abajo)
+  gfx.fillStyle(0x111122, 1);
+  gfx.fillRect(bx + r(2.5), baseY + r(0.2), r(2.5), r(1.5));    // pantorrilla
+  gfx.fillRect(bx,          baseY - r(0.5), r(4),   r(1.2));    // muslo → cuerpo
+
+  // ── SHORTS (perfil — franja bajo el torso)
+  gfx.fillStyle(0x1a1a2e, 1);
+  gfx.fillRect(bx - r(2.5), baseY - r(1.8), r(4), r(1.8));
+
+  // ── RIÑONERA AZUL (lado izquierdo — visible al espectador)
+  gfx.fillStyle(0x2288ff, 1);
+  gfx.fillRect(bx - r(3.8), baseY - r(3.2), r(2.8), r(1.5));
+  gfx.fillStyle(0x88aaff, 1);
+  gfx.fillRect(bx - r(2.7), baseY - r(3.1), r(1),   r(1.3));   // hebilla
+
+  // ── BRAZO IZQUIERDO (apoyado hacia adelante-derecha sobre canasta)
+  gfx.fillStyle(0xb56030, 1);
+  gfx.fillRect(bx,          baseY - r(6.5), r(1.5), r(1.5));   // hombro
+  gfx.fillRect(bx + r(1.4), baseY - r(6.3), r(2.8), r(1.3));   // brazo superior →der
+  gfx.fillRect(bx + r(3.7), baseY - r(6.3), r(1.3), r(3.8));   // antebrazo → abajo
+  gfx.fillStyle(0xc47840, 1);
+  gfx.fillRect(bx + r(3.4), baseY - r(2.5), r(1.8), r(1));     // mano
+
+  // ── TORSO / CAMISA FUCSIA (perfil — más angosta que vista frontal)
+  gfx.fillStyle(0xdd1180, 1);
+  gfx.fillRect(bx - r(2.7), baseY - r(6.8), r(4.2), r(5.5));
+  // Borde delantero (lado derecho del torso = frente del personaje)
+  gfx.fillStyle(0xbb0f70, 1);
+  gfx.fillRect(bx + r(0.7), baseY - r(6.8), r(0.8), r(5.5));
+  // Logo del pecho
+  gfx.fillStyle(0x44bbff, 1);
+  gfx.fillCircle(bx - r(1), baseY - r(4.8), r(0.9));
+  gfx.fillStyle(0xffee44, 1);
+  gfx.fillCircle(bx - r(1), baseY - r(4.8), r(0.45));
+
+  // ── CUELLO
+  gfx.fillStyle(0xc47840, 1);
+  gfx.fillRect(bx - r(2.1), baseY - r(8.2), r(1.6), r(1.8));
+
+  // ── CABEZA (perfil izquierdo — cara apuntando a la DERECHA)
+  const headR = r(2.2);
+  const headX = bx - r(1.3);   // ligeramente a la izquierda del torso en perfil
+  const headY = baseY - r(10.4);
+
+  gfx.fillStyle(0xc47840, 1);
+  gfx.fillCircle(headX, headY, headR);
+
+  // NARIZ (puntiaguda hacia la DERECHA — perfil cartoon)
+  gfx.fillStyle(0x9e5520, 1);
+  gfx.fillTriangle(
+    headX + r(1.9), headY + r(0.1),
+    headX + r(3.4), headY + r(0.7),
+    headX + r(1.9), headY + r(1.3),
+  );
+
+  // OJO izquierdo (de perfil — línea pequeña, expresión tranquila)
+  gfx.fillStyle(0x1a0800, 1);
+  gfx.fillRect(headX + r(0.3), headY - r(0.2), r(1.2), r(0.35));
+
+  // ── PELO NEGRO (corte "7" — largo cuelga hacia la IZQUIERDA = atrás en perfil)
+  gfx.fillStyle(0x0d0d0d, 1);
+  gfx.fillRect(headX - r(2.6), headY - r(1.8), r(1.8), r(7.5));  // coleta larga (atrás)
+  gfx.fillRect(headX - r(2.3), headY - r(2.3), r(4.5), r(1.1));  // cobertura superior
+  gfx.fillRect(headX - r(2.5), headY - r(3.5), r(1),   r(2));    // spike trasero
+  gfx.fillRect(headX - r(0.5), headY - r(3.8), r(0.8), r(1.8));  // spike superior
+
+  // ── GORRA SNAPBACK (perfil, mirando derecha)
+  const capBot = headY - r(2.2);
+
+  // Corona blanca
+  gfx.fillStyle(0xf8f8f8, 1);
+  gfx.fillRect(headX - r(3.2), capBot - r(2.8), r(5.5), r(2.8));
+  // Parte trasera redondeada (izquierda = atrás del personaje)
+  gfx.fillStyle(0xe8e8f8, 1);
+  gfx.fillCircle(headX - r(1.5), capBot - r(2.8), r(2.3));
+  gfx.fillStyle(0xf8f8f8, 1);
+  gfx.fillRect(headX - r(3.2), capBot - r(2.8), r(5.5), r(2));
+  // Botón superior
+  gfx.fillStyle(0xccccdd, 1);
+  gfx.fillRect(headX - r(1.1), capBot - r(5.2), r(0.9), r(0.9));
+
+  // ALA VERDE — apunta hacia la DERECHA y hacia arriba ("gorra levantada")
+  gfx.fillStyle(0x44cc22, 1);
+  gfx.fillPoints([
+    { x: headX + r(2.3), y: capBot          },
+    { x: headX + r(2.3), y: capBot - r(1)   },
+    { x: headX + r(6.8), y: capBot - r(2.4) },
+    { x: headX + r(6.8), y: capBot - r(1.3) },
+  ], true);
+  // Sombra inferior del ala
+  gfx.fillStyle(0x228811, 1);
+  gfx.fillPoints([
+    { x: headX + r(2.3), y: capBot          },
+    { x: headX + r(6.8), y: capBot - r(1.3) },
+    { x: headX + r(6.5), y: capBot - r(0.5) },
+    { x: headX + r(2.3), y: capBot + r(0.3) },
+  ], true);
+
+  // Logo (hoja/flor fucsia en el lateral de la corona — visible de perfil)
+  const logoX = headX - r(1.2);
+  const logoY = capBot - r(1.8);
+  gfx.fillStyle(0xff44aa, 1);
+  gfx.fillTriangle(logoX, logoY - r(1.1), logoX - r(0.6), logoY, logoX + r(0.6), logoY);
+  gfx.fillTriangle(logoX - r(0.9), logoY - r(0.6), logoX, logoY - r(1.1), logoX - r(0.2), logoY);
+  gfx.fillTriangle(logoX + r(0.9), logoY - r(0.6), logoX, logoY - r(1.1), logoX + r(0.2), logoY);
+
+  // ── ARETE DE CRUZ DORADO (oreja izquierda — visible en perfil izquierdo)
+  const earX = headX - r(2.1);
+  const earY = headY + r(0.5);
+  gfx.fillStyle(0xffcc00, 1);
+  gfx.fillRect(earX - r(0.5), earY,            r(1.1), r(0.3));
+  gfx.fillRect(earX - r(0.15), earY - r(0.45), r(0.35), r(1.1));
 }
 
 // ---------------------------------------------------------------------------
