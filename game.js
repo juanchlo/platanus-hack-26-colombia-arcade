@@ -518,7 +518,7 @@ function renderOnePlayer(gfx, player, time, speed) {
   }
 
   // Frecuencia de ondeo: crece linealmente con velocidad hasta doblar, nunca baja
-  const targetWF = 0.008 + Math.min(speed / 600, 1) * 0.292;
+  const targetWF = 0.0008 + Math.min(speed / 600, 1) * 0.0292;
   player._wF = Math.max(player._wF || 0.008, targetWF);
 
   // Canasta y personaje suben juntos; al bajar el personaje cae más lento (flotación)
@@ -1456,6 +1456,7 @@ function startGame(scene) {
     player.prog = 0;
     player.paralyzed = 0;
     player.knockbackVel = 0;
+    player._wF = 0.0008;
   }
   scene.players.p1.x = W / 2 - 80;
   scene.players.p2.x = W / 2 + 80;
@@ -1719,7 +1720,7 @@ function drawNea(gfx, cx, cy, scale, time, speed, jumpZ, waveF) {
   // ── Animación idle + salto
   const t = time || 0;
   const spd = speed || 0;
-  const wF = waveF || 0.008;
+  const wF = waveF || 0.0008;
   const hairWave = Math.round(Math.sin(t * wF) * 5);
   const hairBob  = Math.round(Math.sin(t * wF + 0.8) * 2);
   const blink = (t % 3000) < 100;
@@ -1878,7 +1879,7 @@ function drawChango(gfx, cx, cy, scale, time, speed, jumpZ, waveF) {
   // ── Animación idle
   const t = time || 0;
   const spd = speed || 0;
-  const wF = waveF || 0.008;
+  const wF = waveF || 0.0008;
   const tailWave = Math.round(Math.sin(t * wF) * 6);
   const tailBob  = Math.round(Math.sin(t * wF + 1.0) * 2);
   const blink = (t % 2800) < 110;
