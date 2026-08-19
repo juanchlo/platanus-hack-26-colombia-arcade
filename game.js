@@ -342,11 +342,8 @@ function renderOnePlayer(gfx, player, time, speed) {
 
   // Landing squash — detectar transición jumpZ > 0 → 0
   const prevJZ = player._prevJZ || 0;
-  if (prevJZ > 0.05 && player.jumpZ <= 0.05) player._landTime = time;
+  const descending = prevJZ > player.jumpZ && player.jumpZ > 0.01;
   player._prevJZ = player.jumpZ;
-  const sinceLand = (player._landTime && player.jumpZ <= 0.05) ? time - player._landTime : 9999;
-  // squashPx: desplaza el personaje hacia abajo 0→8px durante 120ms para simular aplastamiento
-  const squashPx = sinceLand < 120 ? Math.round((1 - sinceLand / 120) * 8) : 0;
 
   // Sombra en el piso (se achica mientras el jugador está en el aire)
   const shrink = 1 - player.jumpZ * 0.5;
@@ -359,12 +356,14 @@ function renderOnePlayer(gfx, player, time, speed) {
     gfx.fillCircle(player.x, player.y, 46);
   }
 
-  // Canasta sube con jumpZ; personaje sube 40% más (se despega de la canasta)
+  // Canasta y personaje suben juntos; al bajar el personaje cae más lento (flotación)
   const liftY = player.y - player.jumpZ * 46;
-  const charY  = player.y - player.jumpZ * 64.4 + squashPx;
+  // Durante la bajada el personaje usa jumpZ^0.4 (cae más lento que la canasta)
+  const charJZ = descending ? Math.pow(player.jumpZ, 0.4) : player.jumpZ;
+  const charY  = player.y - charJZ * 46;
   drawBeerCrate(gfx, player.x, liftY, 3);
-  if (player.label === 'P1') drawNea(gfx, player.x, charY, 3, time, speed, player.jumpZ);
-  else drawChango(gfx, player.x, charY, 3, time, speed, player.jumpZ);
+  if (player.label === 'P1') drawNea(gfx, player.x, charY, 3, time, speed, charJZ);
+  else drawChango(gfx, player.x, charY, 3, time, speed, charJZ);
 }
 
 // ---------------------------------------------------------------------------
@@ -1139,7 +1138,7 @@ function drawNea(gfx, cx, cy, scale, time, speed, jumpZ) {
 //
 // cx, cy = mismo anchor que drawBeerCrate (centro de la cara frontal)
 // ---------------------------------------------------------------------------
-function drawChango(gfx, cx, cy, scale, time, speed) {
+function drawChango(gfx, cx, cy, scale, time, speed, jumpZ) {
   const base = scale || 3;
   const s = base * 1.15;                          // 15% más grande que Nea
   const r = (v) => Math.round(v * s);
