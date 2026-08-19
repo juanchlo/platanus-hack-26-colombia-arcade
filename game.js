@@ -486,20 +486,25 @@ function createPlayers(scene) {
       label: 'P2',
     },
   };
-  scene.playerGraphics = scene.add.graphics().setDepth(5);
+  scene.p1Gfx = scene.add.graphics().setDepth(5);
+  scene.p2Gfx = scene.add.graphics().setDepth(5);
   renderPlayers(scene);
 }
 
 function renderPlayers(scene, time, speed) {
-  const gfx = scene.playerGraphics;
-  gfx.clear();
+  scene.p1Gfx.clear();
+  scene.p2Gfx.clear();
   const { p1, p2 } = scene.players;
-  renderOnePlayer(gfx, p1, time, speed);
-  renderOnePlayer(gfx, p2, time, speed);
+  renderOnePlayer(scene.p1Gfx, p1, time, speed);
+  renderOnePlayer(scene.p2Gfx, p2, time, speed);
 }
 
 function renderOnePlayer(gfx, player, time, speed) {
   if (!player.alive) return;
+
+  // Parpadeo al estar paralizado: alterna opacidad cada 80ms
+  const blinking = player.paralyzed > 0 && Math.floor((time || 0) / 80) % 2 === 0;
+  gfx.setAlpha(blinking ? 0.25 : 1.0);
 
   // Landing squash — detectar transición jumpZ > 0 → 0
   const prevJZ = player._prevJZ || 0;
