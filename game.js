@@ -163,41 +163,36 @@ function clearPressed() {
 }
 
 // ---------------------------------------------------------------------------
-// Background — static far-parallax (Cielo y Cerros de Cali)
+// Background — static far-parallax (Cielo, Cerros, Cruces Isométricas, Iglesia)
 // ---------------------------------------------------------------------------
 function createBackground(scene) {
   scene.bgGraphics = scene.add.graphics();
   const gfx = scene.bgGraphics;
 
-  // 1. Cielo Atardecer (se ve en la esquina superior derecha)
+  // 1. Cielo Atardecer (Gradiente cálido)
   gfx.fillGradientStyle(0x2b1055, 0x2b1055, 0xe07a5f, 0xe07a5f, 1);
   gfx.fillRect(0, 0, W, H);
 
-  // 2. Cerros de Cali en la distancia (horizonte superior derecho)
+  // 2. Silueta de los Cerros de Cali (Fondo oscuro)
   gfx.fillStyle(0x1a1a2e, 1);
   gfx.beginPath();
-  gfx.moveTo(250, 400);
-  gfx.lineTo(500, 100); // Cerro 1 (ej. Cristo Rey)
-  gfx.lineTo(650, 180);
-  gfx.lineTo(850, 80);  // Cerro 2 (ej. Tres Cruces)
-  gfx.lineTo(W, 450);
-  gfx.lineTo(250, 450);
+  gfx.moveTo(0, 250);
+  gfx.lineTo(200, 140);
+  gfx.lineTo(400, 180);
+  gfx.lineTo(650, 60);  // Pico Cerro Tres Cruces
+  gfx.lineTo(W, 140);
+  gfx.lineTo(W, H);
+  gfx.lineTo(0, H);
   gfx.closePath();
   gfx.fill();
 
-  // Las 3 cruces en miniatura
-  gfx.lineStyle(2, 0x555566, 1);
-  for (let i = 0; i < 3; i++) {
-    let x = 620 + i * 15;
-    let y = 140 - (i === 1 ? 7 : 0);
-    gfx.lineBetween(x, y, x, y - 10);
-    gfx.lineBetween(x - 4, y - 6, x + 4, y - 6);
-  }
+  // Dibujamos las cruces ordenadas de atrás hacia adelante
+  drawIsoCross(gfx, 680, 90, 1.5); // Derecha (Atrás)
+  drawIsoCross(gfx, 620, 95, 1.5); // Izquierda (Medio)
+  drawIsoCross(gfx, 650, 105, 2.0); // Central (Frente y más grande)
 
-  // 3. El abismo/vacío profundo (esquina inferior derecha y fondo)
-  // El asfalto se dibujará sobre esto.
-  gfx.fillGradientStyle(0x1a1a2e, 0x1a1a2e, 0x050510, 0x050510, 1);
-  gfx.fillRect(0, 200, W, H);
+  // 4. Iglesia de San Antonio Isométrica (Ubicada en la ladera)
+  drawIsoChurch(gfx, 725, 220, 3.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +239,9 @@ function createTrack(scene) {
   renderTrack(scene, 0); // Frame inicial
 }
 
+// ---------------------------------------------------------------------------
+// Track — Asfalto de Cali y Andenes (Mantiene dimensiones y límites intactos)
+// ---------------------------------------------------------------------------
 function renderTrack(scene, distance) {
   const gfx = scene.trackGraphics;
   gfx.clear();
@@ -251,62 +249,132 @@ function renderTrack(scene, distance) {
   const curbY = trackCurbY;
   const cliffY = trackCliffY;
 
-  // 1. BASE DE ASFALTO INCLINADO (Paralelogramo perfecto)
-  gfx.fillStyle(0x3a3a45, 1);
+  // =========================================================================
+  // 1. ZONAS VERDES LATERALES (Líneas divisorias y base para árboles/casas)
+  // =========================================================================
+  
+  // -- Ladera Izquierda (Zanja/Pastizal oscuro) --
+  const leftHillTop = (x) => curbY(x) - 160; 
+  gfx.fillStyle(0x386131, 1);
+  gfx.fillPoints([
+    {x: 0, y: curbY(0)}, {x: W, y: curbY(W)},
+    {x: W, y: leftHillTop(W)}, {x: 0, y: leftHillTop(0)}
+  ], true);
+  gfx.lineStyle(4, 0x24421e, 1);
+  gfx.lineBetween(0, leftHillTop(0), W, leftHillTop(W));
+
+  // -- Valle Derecho (Pastizal y desnivel) --
+  const valleyTop = (x) => cliffY(x) + 40; 
+  gfx.fillStyle(0x5c483a, 1); // Talud de tierra
+  gfx.fillPoints([
+    {x: 0, y: cliffY(0)}, {x: W, y: cliffY(W)},
+    {x: W, y: valleyTop(W)}, {x: 0, y: valleyTop(0)}
+  ], true);
+  
+  gfx.fillStyle(0x4a7c44, 1); // Suelo del valle
+  gfx.fillPoints([
+    {x: 0, y: valleyTop(0)}, {x: W, y: valleyTop(W)},
+    {x: W, y: H}, {x: 0, y: H}
+  ], true);
+  gfx.lineStyle(4, 0x2e5429, 1);
+  gfx.lineBetween(0, valleyTop(0), W, valleyTop(W));
+
+  // =========================================================================
+  // 2. PISTA DE ASFALTO (Franja ancha de color gris oscuro)
+  // =========================================================================
+  gfx.fillStyle(0x2a2a30, 1); // Gris oscuro asfalto
   gfx.fillPoints([
     {x: 0, y: curbY(0)}, {x: W, y: curbY(W)},
     {x: W, y: cliffY(W)}, {x: 0, y: cliffY(0)}
   ], true);
 
-  // 2. ANDÉN IZQUIERDO (Amarillo y Azul, tamaño constante)
+  // =========================================================================
+  // 3. ANDENES / ACERAS (Bordes de color gris claro)
+  // =========================================================================
   const sSpace = 120;
   let sOff = distance % sSpace;
   for (let x = W + sSpace - sOff; x > -sSpace; x -= sSpace) {
-    let worldId = Math.floor((x + distance) / sSpace);
     let nextX = x - sSpace;
-    gfx.fillStyle(worldId % 2 === 0 ? 0xddaa00 : 0x2255dd, 1);
+    // Andén superior (Izquierdo)
+    gfx.fillStyle(0xdcdfe2, 1);
     gfx.fillPoints([
       {x: x, y: curbY(x)}, {x: nextX, y: curbY(nextX)},
-      {x: nextX, y: curbY(nextX) - 20}, {x: x, y: curbY(x) - 20}
+      {x: nextX, y: curbY(nextX) - 16}, {x: x, y: curbY(x) - 16}
+    ], true);
+    // Cantodefinitorio del andén
+    gfx.fillStyle(0x9aa0a6, 1);
+    gfx.fillPoints([
+      {x: x, y: curbY(x)}, {x: nextX, y: curbY(nextX)},
+      {x: nextX, y: curbY(nextX) - 4}, {x: x, y: curbY(x) - 4}
     ], true);
   }
 
-  // 3. LÍNEAS DE LA CALLE (Perpendiculares a la diagonal)
-  const lSpace = 200;
+  // =========================================================================
+  // 4. TEXTURA DEL ASFALTO (Manchas y grietas sin colisiones)
+  // =========================================================================
+  const lSpace = 160;
   let lOff = distance % lSpace;
   for (let x = W + lSpace - lOff; x > -lSpace; x -= lSpace) {
     let y = (curbY(x) + cliffY(x)) / 2;
-    gfx.fillStyle(0xddaa00, 0.9);
-    // Dibujamos el rectángulo de la línea respetando el ángulo isométrico
+    let roadWidth = cliffY(x) - curbY(x);
+    
+    // Manchas oscuras y grietas dinámicas dispersas en el asfalto
+    gfx.fillStyle(0x1a1a20, 0.6);
+    gfx.fillRect(x - 30, y - roadWidth * 0.25, 45, 12);
+    gfx.fillRect(x - 80, y + roadWidth * 0.2, 35, 15);
+    
+    // Pequeños polígonos/grietas oscuras simulando parches en la vía
+    gfx.fillStyle(0x111115, 0.8);
     gfx.fillPoints([
-      {x: x, y: y}, {x: x - 60, y: y - 30},
-      {x: x - 60, y: y - 22}, {x: x, y: y + 8}
+      {x: x - 20, y: y}, {x: x - 35, y: y - 8}, {x: x - 15, y: y - 14}
     ], true);
   }
 
-  // 4. BARANDA OXIDADA CONSTANTE (Borde Inferior Derecho)
-  gfx.lineStyle(4, 0x555555, 1);
-  gfx.lineBetween(0, cliffY(0), W, cliffY(W));
+  // =========================================================================
+  // 5. GENERADOR PROCEDURAL DE CASAS Y ÁRBOLES (Escalas 6.5 y 5.5)
+  // =========================================================================
+  const objSpace = 100;
+  let objOff = distance % objSpace;
+  const startX = -objSpace - objOff;
+  const endX = W + objSpace;
 
-  const rSpace = 150;
-  let rOff = distance % rSpace;
-  for (let x = W + rSpace - rOff; x > -rSpace; x -= rSpace) {
-    let y = cliffY(x);
-    gfx.fillStyle(0x8b4513, 1);
-    gfx.fillRect(x, y - 40, 8, 40); // Postes rectos
+  for (let x = startX; x <= endX; x += objSpace) {
+    let worldId = Math.floor((x + distance) / objSpace);
+    
+    let rand1 = Math.abs(Math.sin(worldId * 12.9898) * 43758.5453) % 1;
+    let rand2 = Math.abs(Math.cos(worldId * 4.1415) * 43758.5453) % 1;
+    
+    // --- Lado Izquierdo (Ladera superior) ---
+    if (rand1 > 0.35) {
+      let y_house = curbY(x) - 10 - rand2 * 40;
+      let y_tree = curbY(x) - 60 - rand2 * 80;
+      if (rand1 > 0.9) {
+        drawIsoHouse(gfx, x, y_house, 6.5, worldId % 2 !== 0);
+      } else {
+        drawIsoTree(gfx, x, y_tree, 5.5);
+      }
+    }
+    
+    // --- Lado Derecho (Valle inferior) ---
+    if (rand2 > 0.25) {
+      let y_house = cliffY(x) + 100 + rand1 * 50;
+      let y_tree = cliffY(x) + 70 + rand1 * 100;
+      if (rand2 > 0.85) {
+        drawIsoHouse(gfx, x-10, y_house, 6.5, worldId % 2 === 0);
+      } else {
+        drawIsoTree(gfx, x, y_tree, 5.5);
+      }
+    }
   }
-  // Tubo principal rígido
-  gfx.lineStyle(6, 0x8b4513, 1);
-  gfx.lineBetween(0, cliffY(0) - 35, W, cliffY(W) - 35);
 }
 
 function createPlayers(scene) {
   scene.players = {
     p1: {
-      lat: -40, // Posición lateral (negativo es hacia el andén izquierdo)
+      lat: 40,  // Posición lateral inicial (izquierda visualmente)
       prog: 0,  // Posición adelante(+)/atrás(-) respecto a la línea del pelotón
       x: 0, y: 0, 
-      jumping: false, jumpCharging: false, jumpHeld: 0, jumpElapsed: 0, jumpDuration: 0, jumpZ: 0,
+      jumping: false, jumpTimer: 0, jumpLanding: false, landTimer: 0, landStartZ: 0, jumpZ: 0,
       pushing: false,
       paralyzed: 0,
       knockbackVel: 0,
@@ -314,10 +382,10 @@ function createPlayers(scene) {
       label: 'P1',
     },
     p2: {
-      lat: 40, // Posición lateral (positivo es hacia el barranco derecho)
+      lat: -40, // Posición lateral inicial (derecha visualmente)
       prog: 0,
       x: 0, y: 0,
-      jumping: false, jumpCharging: false, jumpHeld: 0, jumpElapsed: 0, jumpDuration: 0, jumpZ: 0,
+      jumping: false, jumpTimer: 0, jumpLanding: false, landTimer: 0, landStartZ: 0, jumpZ: 0,
       pushing: false,
       paralyzed: 0,
       knockbackVel: 0,
@@ -325,7 +393,7 @@ function createPlayers(scene) {
       label: 'P2',
     },
   };
-  scene.playerGraphics = scene.add.graphics();
+  scene.playerGraphics = scene.add.graphics().setDepth(5);
   renderPlayers(scene);
 }
 
@@ -367,6 +435,171 @@ function renderOnePlayer(gfx, player, time, speed) {
   drawBeerCrate(gfx, player.x, liftY, 3);
   if (player.label === 'P1') drawNea(gfx, player.x, charY, 3, time, speed, charJZ, player._wF);
   else drawChango(gfx, player.x, charY, 3, time, speed, charJZ, player._wF);
+}
+
+// ---------------------------------------------------------------------------
+// Procedural Assets (Casas y Árboles en perspectiva Isométrica 2:1)
+// ---------------------------------------------------------------------------
+// Función maestra para dibujar bloques isométricos 8-bits
+function drawIsoBlock(gfx, cx, cy, w, d, h, cFront, cSide, cTop, cLine) {
+  const tyL = w * 0.5; // Inclinación izquierda
+  const tyR = d * 0.5; // Inclinación derecha
+
+  // Lado derecho (Sombra)
+  gfx.fillStyle(cSide, 1);
+  gfx.fillPoints([{x:cx, y:cy}, {x:cx+d, y:cy-tyR}, {x:cx+d, y:cy-tyR-h}, {x:cx, y:cy-h}], true);
+
+  // Lado frontal/izquierdo (Luz)
+  gfx.fillStyle(cFront, 1);
+  gfx.fillPoints([{x:cx, y:cy}, {x:cx-w, y:cy-tyL}, {x:cx-w, y:cy-tyL-h}, {x:cx, y:cy-h}], true);
+
+  // Arriba (Luz superior)
+  gfx.fillStyle(cTop, 1);
+  gfx.fillPoints([{x:cx, y:cy-h}, {x:cx-w, y:cy-tyL-h}, {x:cx-w+d, y:cy-tyL-tyR-h}, {x:cx+d, y:cy-tyR-h}], true);
+
+  // Bordes (Estilo pixel art)
+  if (cLine) {
+    gfx.lineStyle(2, cLine, 1);
+    // Contorno exterior y aristas visibles
+    gfx.strokePoints([{x:cx-w, y:cy-tyL}, {x:cx, y:cy}, {x:cx+d, y:cy-tyR}, {x:cx+d, y:cy-tyR-h}, {x:cx-w+d, y:cy-tyL-tyR-h}, {x:cx-w, y:cy-tyL-h}], true);
+    gfx.lineBetween(cx, cy, cx, cy-h); // Arista central
+    gfx.lineBetween(cx-w, cy-tyL-h, cx, cy-h); // Arista superior izq
+    gfx.lineBetween(cx+d, cy-tyR-h, cx, cy-h); // Arista superior der
+  }
+}
+
+function drawIsoTree(gfx, cx, cy, scale) {
+  const s = scale || 2;
+  // Sombra
+  gfx.fillStyle(0x000000, 0.2);
+  gfx.fillEllipse(cx, cy, 14 * s, 7 * s);
+
+  // Tronco
+  gfx.fillStyle(0x4a2e1b, 1);
+  gfx.fillRect(cx - 2 * s, cy - 8 * s, 4 * s, 8 * s);
+  
+  // Hojas (Generador de bloques isométricos apilados)
+  const drawBlock = (bx, by, bw, cTop, cLeft, cRight) => {
+    const ty = bw * 0.5; // La magia de la pendiente 0.5
+    gfx.fillStyle(cLeft, 1);
+    gfx.fillPoints([{x:bx, y:by}, {x:bx-bw, y:by-ty}, {x:bx-bw, y:by-ty-bw}, {x:bx, y:by-bw}], true);
+    gfx.fillStyle(cRight, 1);
+    gfx.fillPoints([{x:bx, y:by}, {x:bx+bw, y:by-ty}, {x:bx+bw, y:by-ty-bw}, {x:bx, y:by-bw}], true);
+    gfx.fillStyle(cTop, 1);
+    gfx.fillPoints([{x:bx, y:by-bw}, {x:bx-bw, y:by-ty-bw}, {x:bx, y:by-ty*2-bw}, {x:bx+bw, y:by-ty-bw}], true);
+  };
+  
+  // Dos capas de hojas formando la copa
+  drawBlock(cx, cy - 6 * s, 9 * s, 0x3d7035, 0x2e5928, 0x1f3d1b);
+  drawBlock(cx, cy - 13 * s, 6 * s, 0x4a8540, 0x3d7035, 0x2e5928);
+}
+
+function drawIsoHouse(gfx, cx, cy, scale, isAltColor) {
+  const s = scale || 2.5;
+  const fw = 14 * s; // Ancho cara izquierda
+  const dw = 12 * s; // Ancho cara derecha
+  const h  = 12 * s; // Altura
+  const tyL = fw * 0.5; 
+  const tyR = dw * 0.5;
+  
+  // Paletas intercambiables (Casas coloniales coloridas)
+  const cFront = isAltColor ? 0xd95a53 : 0xeaddcf; 
+  const cSide  = isAltColor ? 0xa8413b : 0xbfb4a8;
+  const cRoof  = 0x3a3a3a;
+  
+  // Pared Izquierda
+  gfx.fillStyle(cFront, 1);
+  gfx.fillPoints([{x:cx, y:cy}, {x:cx-fw, y:cy-tyL}, {x:cx-fw, y:cy-tyL-h}, {x:cx, y:cy-h}], true);
+  
+  // Pared Derecha
+  gfx.fillStyle(cSide, 1);
+  gfx.fillPoints([{x:cx, y:cy}, {x:cx+dw, y:cy-tyR}, {x:cx+dw, y:cy-tyR-h}, {x:cx, y:cy-h}], true);
+  
+  // Techo (Plano para estilo cubo 8-bits)
+  gfx.fillStyle(cRoof, 1);
+  gfx.fillPoints([{x:cx, y:cy-h}, {x:cx-fw, y:cy-tyL-h}, {x:cx-fw+dw, y:cy-tyL-tyR-h}, {x:cx+dw, y:cy-tyR-h}], true);
+  
+  // Puerta Isométrica (Cara izquierda)
+  gfx.fillStyle(0x3d2314, 1);
+  gfx.fillPoints([
+    {x:cx-3*s, y:cy-1.5*s}, {x:cx-7*s, y:cy-3.5*s}, 
+    {x:cx-7*s, y:cy-3.5*s-6*s}, {x:cx-3*s, y:cy-1.5*s-6*s}
+  ], true);
+
+  // Ventana Isométrica (Cara derecha)
+  gfx.fillStyle(0x112233, 1);
+  gfx.fillPoints([
+    {x:cx+3*s, y:cy-1.5*s-4*s}, {x:cx+7*s, y:cy-3.5*s-4*s}, 
+    {x:cx+7*s, y:cy-3.5*s-7*s}, {x:cx+3*s, y:cy-1.5*s-7*s}
+  ], true);
+}
+
+function drawIsoCross(gfx, cx, cy, scale) {
+  const s = scale || 2;
+  const cF = 0xcccccc; // Gris claro (Frente)
+  const cS = 0x888899; // Gris oscuro (Lado)
+  const cT = 0xeeeeee; // Blanco/Gris muy claro (Arriba)
+  const cL = 0x222222; // Borde negro
+
+  // Se dibuja de abajo hacia arriba para respetar el Z-Index
+  // 1. Pilar inferior
+  drawIsoBlock(gfx, cx, cy, 4*s, 4*s, 16*s, cF, cS, cT, cL);
+  
+  // 2. Brazo horizontal (Atraviesa el pilar)
+  // Desplazamos el ancla (cx, cy) hacia arriba y a la izquierda para centrar el brazo
+  const bx = cx + 7*s;
+  const by = cy - 7*s - (6*s * 0.5);
+  drawIsoBlock(gfx, bx, by, 16*s, 4*s, 4*s, cF, cS, cT, cL);
+  
+  // 3. Pilar superior
+  const tx = cx;
+  const ty = cy - 20*s;
+  drawIsoBlock(gfx, tx, ty, 4*s, 4*s, 8*s, cF, cS, cT, cL);
+}
+
+function drawIsoChurch(gfx, cx, cy, scale) {
+  const s = scale || 2.5;
+  const cWallF = 0xf0f0f0; // Pared blanca
+  const cWallS = 0xa0a0a8; // Pared sombra
+  const cRoofF = 0x8c4c3e; // Techo terracota claro
+  const cRoofS = 0x5e332a; // Techo terracota oscuro
+  const cLine  = 0x222222;
+
+  // 1. NAVE CENTRAL (Edificio principal atrás)
+  const nx = cx + 15*s;
+  const ny = cy - 10*s;
+  drawIsoBlock(gfx, nx, ny, 25*s, 20*s, 18*s, cWallF, cWallS, 0xdddddd, cLine);
+  
+  // Techo a dos aguas de la nave (Construido con polígonos manuales por la inclinación)
+  const rH = 12*s;
+  gfx.fillStyle(cRoofF, 1);
+  gfx.fillPoints([{x:nx, y:ny-18*s}, {x:nx-25*s, y:ny-12.5*s-18*s}, {x:nx-12.5*s, y:ny-6.25*s-18*s-rH}], true);
+  gfx.fillStyle(cRoofS, 1);
+  gfx.fillPoints([{x:nx, y:ny-18*s}, {x:nx-12.5*s, y:ny-6.25*s-18*s-rH}, {x:nx-12.5*s+20*s, y:ny-6.25*s-10*s-18*s-rH}, {x:nx+20*s, y:ny-10*s-18*s}], true);
+  
+  // 2. TORRE FRONTAL
+  drawIsoBlock(gfx, cx, cy, 14*s, 14*s, 35*s, cWallF, cWallS, 0xdddddd, cLine);
+  
+  // Puerta de la torre (Doble hoja de madera)
+  gfx.fillStyle(0x5e332a, 1);
+  gfx.fillPoints([{x:cx-3*s, y:cy-1.5*s}, {x:cx-11*s, y:cy-5.5*s}, {x:cx-11*s, y:cy-5.5*s-10*s}, {x:cx-3*s, y:cy-1.5*s-10*s}], true);
+  gfx.lineStyle(1.5, cLine, 1);
+  gfx.lineBetween(cx-7*s, cy-3.5*s, cx-7*s, cy-3.5*s-10*s); // División de la puerta
+
+  // Ventanas altas de la torre (Cristal azul)
+  gfx.fillStyle(0x336699, 1);
+  gfx.fillPoints([{x:cx-4*s, y:cy-2*s-15*s}, {x:cx-10*s, y:cy-5*s-15*s}, {x:cx-10*s, y:cy-5*s-22*s}, {x:cx-4*s, y:cy-2*s-22*s}], true);
+  gfx.fillPoints([{x:cx-4*s, y:cy-2*s-25*s}, {x:cx-10*s, y:cy-5*s-25*s}, {x:cx-10*s, y:cy-5*s-32*s}, {x:cx-4*s, y:cy-2*s-32*s}], true);
+
+  // 3. TECHO ESCALONADO DE LA TORRE (El sello visual de tu referencia)
+  let tw = 14*s, td = 14*s, ty = cy - 35*s, tx = cx;
+  for(let i=0; i<4; i++) {
+    drawIsoBlock(gfx, tx, ty, tw, td, 4*s, cRoofF, cRoofS, cRoofF, cLine);
+    // Reducir dimensiones y subir para el siguiente escalón
+    tw -= 3*s; td -= 3*s;
+    tx -= 1.5*s; // Mantener centrado visualmente
+    ty -= 4*s + (1.5*s * 0.5); // Subir altura + offset isométrico
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -458,49 +691,269 @@ function drawDrunkObstacle(gfx, cx, cy, scale) {
   drawBottle(gfx, cx - 38 * s, cy + 11 * s, s, 1.0);
 }
 
-function drawRustyRailObstacle(gfx, cx, cy, scale, length) {
+function drawAbyssBridge(gfx, cx, bridgeLat, scale, length) {
   const s = scale || 1;
-  const len = length || 90 * s;
+  const aw = (length || 80) * s;  // longitud del abismo en px
+  const half = aw / 2;
+  const x1 = cx - half;
+  const x2 = cx + half;
 
-  const C_POST      = 0x6b4226;
-  const C_PIPE_BASE = 0x8b4513;
-  const C_RUST_1    = 0xb35a1f;
-  const C_RUST_2    = 0xd9782e;
-  const C_HAZARD_Y  = 0xf2c40c;
-  const C_HAZARD_B  = 0x1a1a1a;
-  const C_DARK      = 0x2a1608;
+  const y1_curb = trackCurbY(x1);
+  const y1_cliff = trackCliffY(x1);
+  const y2_curb = trackCurbY(x2);
+  const y2_cliff = trackCliffY(x2);
 
-  gfx.fillStyle(C_POST, 1);
-  gfx.fillRect(cx - len / 2, cy - 6 * s, 5 * s, 26 * s);
-  gfx.fillRect(cx + len / 2 - 5 * s, cy - 6 * s, 5 * s, 26 * s);
+  const y1_top = y1_curb - 35;
+  const y1_bot = y1_cliff + 45;
+  const y2_top = y2_curb - 35;
+  const y2_bot = y2_cliff + 45;
 
-  gfx.fillStyle(C_RUST_1, 0.8);
-  gfx.fillCircle(cx - len / 2 + 2 * s, cy + 16 * s, 6 * s);
-  gfx.fillCircle(cx + len / 2 - 2 * s, cy + 16 * s, 6 * s);
+  // =========================================================================
+  // 1. ABISMO PROFUNDO ESTRUCTURAL (Foso con paredes rocosas y profundidad 3D)
+  // =========================================================================
+  // Fondo negro abisal
+  gfx.fillStyle(0x03030a, 1);
+  gfx.fillPoints([
+    { x: x1, y: y1_top }, { x: x2, y: y2_top },
+    { x: x2, y: y2_bot }, { x: x1, y: y1_bot },
+  ], true);
 
-  gfx.lineStyle(6 * s, C_PIPE_BASE, 1);
-  gfx.beginPath();
-  gfx.moveTo(cx - len / 2, cy - 4 * s);
-  gfx.lineTo(cx, cy + 2 * s);
-  gfx.lineTo(cx + len / 2, cy - 4 * s);
-  gfx.strokePath();
+  // Pared rocosa izquierda (estrato rocoso en perspectiva)
+  const wallW = Math.min(aw * 0.4, 45);
+  gfx.fillStyle(0x181824, 1);
+  gfx.fillPoints([
+    { x: x1, y: y1_top },
+    { x: x1 + wallW, y: y1_top + 20 },
+    { x: x1 + wallW * 0.8, y: y1_bot - 20 },
+    { x: x1, y: y1_bot },
+  ], true);
 
-  for (let i = 0; i < 5; i++) {
-    const t = i / 4;
-    const px = cx - len / 2 + t * len;
-    const py = cy - 4 * s + Math.sin(t * Math.PI) * 6 * s;
-    gfx.fillStyle(i % 2 === 0 ? C_RUST_1 : C_RUST_2, 0.85);
-    gfx.fillCircle(px, py, 3 * s + (i % 3));
-  }
+  // Estratos de roca intermedia
+  gfx.fillStyle(0x0f0f1c, 1);
+  gfx.fillPoints([
+    { x: x1 + wallW * 0.5, y: y1_top + 40 },
+    { x: x2 - 5, y: y2_top + 60 },
+    { x: x2 - 5, y: y2_bot - 10 },
+    { x: x1 + wallW * 0.4, y: y1_bot - 10 },
+  ], true);
 
+  // Grietas y sombras profundas en el foso
+  gfx.lineStyle(2 * s, 0x080812, 1);
+  gfx.lineBetween(x1 + wallW * 0.5, y1_top + 40, x1 + wallW * 0.8, y1_bot - 20);
+
+  // =========================================================================
+  // 2. BORDES DE ASFALTO FRACTURADOS Y VARILLAS EXPUESTAS
+  // =========================================================================
+  // Borde de corte de asfalto izquierdo (x1)
+  gfx.fillStyle(0x22222c, 1);
+  gfx.fillPoints([
+    { x: x1 - 6, y: y1_curb - 12 }, { x: x1, y: y1_curb - 12 },
+    { x: x1, y: y1_cliff + 12 }, { x: x1 - 6, y: y1_cliff + 12 },
+  ], true);
+  // Línea de brillo en el borde de fractura
+  gfx.lineStyle(1.8 * s, 0x484856, 1);
+  gfx.lineBetween(x1 - 6, y1_curb - 12, x1 - 6, y1_cliff + 12);
+
+  // Borde de corte de asfalto derecho (x2)
+  gfx.fillStyle(0x1c1c24, 1);
+  gfx.fillPoints([
+    { x: x2, y: y2_curb - 12 }, { x: x2 + 6, y: y2_curb - 12 },
+    { x: x2 + 6, y: y2_cliff + 12 }, { x: x2, y: y2_cliff + 12 },
+  ], true);
+  gfx.lineStyle(1.8 * s, 0x3a3a46, 1);
+  gfx.lineBetween(x2 + 6, y2_curb - 12, x2 + 6, y2_cliff + 12);
+
+  // Varillas de acero oxidado que asoman del asfalto roto
+  const rebarColors = [0x9e4a24, 0xbf6432, 0x7a3418];
   for (let i = 0; i < 4; i++) {
-    gfx.fillStyle(i % 2 === 0 ? C_HAZARD_Y : C_HAZARD_B, 1);
-    gfx.fillRect(cx - len / 2 - 2 * s + i * 3 * s, cy - 12 * s, 3 * s, 8 * s);
+    const t = (i + 0.5) / 4;
+    const ry1 = y1_curb + t * (y1_cliff - y1_curb);
+    const rLen1 = 8 + (i % 3) * 5;
+    gfx.lineStyle(2, rebarColors[i % 3], 1);
+    gfx.lineBetween(x1, ry1, x1 + rLen1, ry1 + (i % 2 === 0 ? 3 : -3));
+
+    const ry2 = y2_curb + t * (y2_cliff - y2_curb);
+    const rLen2 = 7 + ((i + 1) % 3) * 5;
+    gfx.lineStyle(2, rebarColors[i % 3], 1);
+    gfx.lineBetween(x2, ry2, x2 - rLen2, ry2 + (i % 2 === 0 ? -2 : 3));
   }
 
-  gfx.lineStyle(1 * s, C_DARK, 0.7);
-  gfx.strokeRect(cx - len / 2, cy - 6 * s, 5 * s, 26 * s);
-  gfx.strokeRect(cx + len / 2 - 5 * s, cy - 6 * s, 5 * s, 26 * s);
+  // Señalización vial de peligro: Conos de obra reflectivos en los extremos del asfalto
+  const drawCone = (cx, cy) => {
+    gfx.fillStyle(0x1a1a1a, 1);
+    gfx.fillRect(cx - 5, cy + 4, 10, 3);
+    gfx.fillStyle(0xff4400, 1);
+    gfx.fillTriangle(cx - 4, cy + 4, cx + 4, cy + 4, cx, cy - 10);
+    gfx.fillStyle(0xffffff, 1);
+    gfx.fillRect(cx - 2, cy - 3, 4, 3);
+  };
+  drawCone(x1 - 12, y1_curb + 10);
+  drawCone(x1 - 12, y1_cliff - 15);
+  drawCone(x2 + 12, y2_curb + 10);
+  drawCone(x2 + 12, y2_cliff - 15);
+
+  // =========================================================================
+  // 3. ESTRUCTURA Y VIGAS DE SOPORTE DEL PUENTE (Under-truss)
+  // =========================================================================
+  const bHalf = 16; // Mitad del ancho del puente en unidades de lat
+  const bMin = bridgeLat - bHalf;
+  const bMax = bridgeLat + bHalf;
+
+  const y1t = laneY(x1, bMin), y1b = laneY(x1, bMax);
+  const y2t = laneY(x2, bMin), y2b = laneY(x2, bMax);
+  const midY_b = (y1b + y2b) / 2;
+
+  // Sombra proyectada del puente en el abismo
+  gfx.fillStyle(0x000000, 0.45);
+  gfx.fillPoints([
+    { x: x1, y: y1t + 30 }, { x: x2, y: y2t + 30 },
+    { x: x2, y: y2b + 38 }, { x: x1, y: y1b + 38 },
+  ], true);
+
+  // Vigas pesadas de madera/hierro que sostienen el puente desde las paredes del foso
+  gfx.lineStyle(4 * s, 0x221208, 1);
+  gfx.lineBetween(x1, y1b + 28, cx, midY_b + 22);
+  gfx.lineBetween(x2, y2b + 28, cx, midY_b + 22);
+  gfx.lineStyle(2 * s, 0x482812, 1);
+  gfx.lineBetween(x1, y1b + 26, cx, midY_b + 20);
+  gfx.lineBetween(x2, y2b + 26, cx, midY_b + 20);
+
+  // Tensores verticales bajo la plataforma
+  gfx.lineStyle(1.5 * s, 0x5a351a, 0.9);
+  gfx.lineBetween(cx, (y1t + y2t) / 2, cx, midY_b + 20);
+
+  // =========================================================================
+  // 4. PLATAFORMA DE TABLONES DE MADERA (3D Deck)
+  // =========================================================================
+  // Fascia / Borde frontal 3D de madera (da espesor visible a la pasarela)
+  const deckThickness = 7 * s;
+  gfx.fillStyle(0x381c0c, 1);
+  gfx.fillPoints([
+    { x: x1, y: y1b }, { x: x2, y: y2b },
+    { x: x2, y: y2b + deckThickness }, { x: x1, y: y1b + deckThickness },
+  ], true);
+  gfx.lineStyle(1.5 * s, 0x5c3016, 1);
+  gfx.lineBetween(x1, y1b, x2, y2b);
+
+  // Tablones individuales rústicos
+  const plankWidth = 8.5 * s;
+  const numPlanks = Math.max(4, Math.floor(aw / plankWidth));
+  const woodTones = [0x7c4a26, 0x6e3f1e, 0x8a552e, 0x5e3417, 0x774523];
+
+  for (let i = 0; i < numPlanks; i++) {
+    const px1 = x1 + (i / numPlanks) * aw;
+    const px2 = x1 + ((i + 0.9) / numPlanks) * aw;
+
+    const pt1 = laneY(px1, bMin), pb1 = laneY(px1, bMax);
+    const pt2 = laneY(px2, bMin), pb2 = laneY(px2, bMax);
+
+    gfx.fillStyle(woodTones[i % woodTones.length], 1);
+    gfx.fillPoints([
+      { x: px1, y: pt1 }, { x: px2, y: pt2 },
+      { x: px2, y: pb2 }, { x: px1, y: pb1 },
+    ], true);
+
+    // Separación oscura entre tablones
+    gfx.lineStyle(1.2 * s, 0x1a0d06, 0.85);
+    gfx.lineBetween(px2, pt2, px2, pb2);
+
+    // Clavos / pernos de hierro en los extremos de las tablas
+    gfx.fillStyle(0x22130b, 1);
+    gfx.fillRect(px1 + 1.5, pt1 + 1.5, 2.2, 2.2);
+    gfx.fillRect(px1 + 1.5, pb1 - 3.5, 2.2, 2.2);
+  }
+
+  // =========================================================================
+  // 5. BARANDAS OXIDADAS DE SAN ANTONIO (Con Malla, Tubos y Reflectivos)
+  // =========================================================================
+  const postHeight = 18 * s;
+  const numPosts = Math.max(3, Math.floor(aw / (22 * s)));
+
+  // Parantes verticales oxidados a lo largo de ambos lados
+  for (let i = 0; i <= numPosts; i++) {
+    const t = i / numPosts;
+    const px = x1 + t * aw;
+    const pTopY = laneY(px, bMin);
+    const pBotY = laneY(px, bMax);
+
+    // Postes superiores
+    gfx.fillStyle(0x381408, 1); // sombra
+    gfx.fillRect(px - 2.5 * s, pTopY - postHeight, 5 * s, postHeight);
+    gfx.fillStyle(0x823716, 1); // tono óxido
+    gfx.fillRect(px - 1.5 * s, pTopY - postHeight, 3 * s, postHeight);
+    gfx.fillStyle(0xb55122, 1); // brillo óxido superior
+    gfx.fillRect(px - 1.5 * s, pTopY - postHeight, 3 * s, 3 * s);
+
+    // Postes inferiores
+    gfx.fillStyle(0x381408, 1);
+    gfx.fillRect(px - 2.5 * s, pBotY - postHeight, 5 * s, postHeight);
+    gfx.fillStyle(0x823716, 1);
+    gfx.fillRect(px - 1.5 * s, pBotY - postHeight, 3 * s, postHeight);
+    gfx.fillStyle(0xb55122, 1);
+    gfx.fillRect(px - 1.5 * s, pBotY - postHeight, 3 * s, 3 * s);
+
+    // Cruces de alambre oxidado (malla de seguridad) entre postes
+    if (i < numPosts) {
+      const nextPx = x1 + ((i + 1) / numPosts) * aw;
+      const nextTopY = laneY(nextPx, bMin);
+      const nextBotY = laneY(nextPx, bMax);
+
+      gfx.lineStyle(1.2 * s, 0x52230e, 0.8);
+      // Malla baranda superior
+      gfx.lineBetween(px, pTopY - 2 * s, nextPx, nextTopY - postHeight + 3 * s);
+      gfx.lineBetween(px, pTopY - postHeight + 3 * s, nextPx, nextTopY - 2 * s);
+      // Malla baranda inferior
+      gfx.lineBetween(px, pBotY - 2 * s, nextPx, nextBotY - postHeight + 3 * s);
+      gfx.lineBetween(px, pBotY - postHeight + 3 * s, nextPx, nextBotY - 2 * s);
+    }
+  }
+
+  // Tubos horizontales principales de la baranda oxidada
+  // -- Baranda Superior --
+  gfx.lineStyle(4 * s, 0x2a0c04, 1); // sombra
+  gfx.lineBetween(x1, y1t - postHeight + 2, x2, y2t - postHeight + 2);
+  gfx.lineStyle(3 * s, 0x8a3916, 1); // óxido principal
+  gfx.lineBetween(x1, y1t - postHeight, x2, y2t - postHeight);
+  gfx.lineStyle(1.2 * s, 0xc8602b, 1); // filo brillante superior
+  gfx.lineBetween(x1, y1t - postHeight - 1, x2, y2t - postHeight - 1);
+  // Tubo intermedio
+  gfx.lineStyle(2 * s, 0x732e12, 1);
+  gfx.lineBetween(x1, y1t - postHeight * 0.5, x2, y2t - postHeight * 0.5);
+
+  // -- Baranda Inferior --
+  gfx.lineStyle(4 * s, 0x2a0c04, 1);
+  gfx.lineBetween(x1, y1b - postHeight + 2, x2, y2b - postHeight + 2);
+  gfx.lineStyle(3 * s, 0x8a3916, 1);
+  gfx.lineBetween(x1, y1b - postHeight, x2, y2b - postHeight);
+  gfx.lineStyle(1.2 * s, 0xc8602b, 1);
+  gfx.lineBetween(x1, y1b - postHeight - 1, x2, y2b - postHeight - 1);
+  // Tubo intermedio
+  gfx.lineStyle(2 * s, 0x732e12, 1);
+  gfx.lineBetween(x1, y1b - postHeight * 0.5, x2, y2b - postHeight * 0.5);
+
+  // =========================================================================
+  // 6. SEÑALES Y LUCES REFLECTIVAS EN LAS ENTRADAS DEL PUENTE
+  // =========================================================================
+  const drawEntryMarker = (ex, ey) => {
+    // Poste reforzado
+    gfx.fillStyle(0x1a1a1a, 1);
+    gfx.fillRect(ex - 3.5 * s, ey - postHeight - 4 * s, 7 * s, postHeight + 4 * s);
+    // Franjas de advertencia amarillo tráfico
+    for (let f = 0; f < 3; f++) {
+      gfx.fillStyle(f % 2 === 0 ? 0xf5b700 : 0x1a1a1a, 1);
+      gfx.fillRect(ex - 3.5 * s, ey - postHeight - 2 * s + f * 5 * s, 7 * s, 4 * s);
+    }
+    // Reflector / Ojo de gato luminoso en la punta
+    gfx.fillStyle(0xff8800, 0.9);
+    gfx.fillCircle(ex, ey - postHeight - 5 * s, 4.5 * s);
+    gfx.fillStyle(0xffff44, 1);
+    gfx.fillCircle(ex, ey - postHeight - 5 * s, 2.2 * s);
+  };
+
+  drawEntryMarker(x1, y1t);
+  drawEntryMarker(x1, y1b);
+  drawEntryMarker(x2, y2t);
+  drawEntryMarker(x2, y2b);
 }
 
 // --- Configuración por tipo -------------------------------------------------
@@ -509,15 +962,15 @@ function drawRustyRailObstacle(gfx, cx, cy, scale, length) {
 const OBSTACLE_DEF = {
   hole:  { hazardRadius: 16, hitRadius: 30, scale: 1.1 },
   drunk: { hazardRadius: 26, hitRadius: 42, scale: 1.5 },
-  rail:  { railSafeMin: 55, railSafeMax: 85, hitRadius: 28, scale: 1 },
+  rail:  { bridgeHalfW: 15, hitRadius: 40, scale: 1 },
 };
 
-const SPAWN_X = W + 90; // aparecen fuera de pantalla, a la derecha
-const DESPAWN_X = -80;
+const SPAWN_X = W + 120; // margen amplio para abismos largos
+const DESPAWN_X = -120;
 
 function createObstaclePool(scene) {
   scene.obstacles = [];
-  scene.obstacleGraphics = scene.add.graphics();
+  scene.obstacleGraphics = scene.add.graphics().setDepth(3);
   scene.gameState.spawnTimer = 1.2; // primer obstáculo llega poco después de arrancar
 }
 
@@ -525,15 +978,19 @@ function spawnObstacle(scene) {
   const phase = getDiffPhase(scene.gameState.elapsed);
   const type = rollObstacleType(phase);
 
-  let lat;
+  let lat, length, hitRadius;
   if (type === 'rail') {
-    lat = Phaser.Math.Between(60, 80);
+    // El puente puede estar en cualquier posición lateral de la pista
+    lat = Phaser.Math.Between(LAT_MIN + 22, LAT_MAX - 22);
+    // Longitud variable del abismo (entre 55px y 160px)
+    length = Phaser.Math.Between(55, 160);
+    hitRadius = Math.round(length / 2) + 6;
   } else {
     lat = Phaser.Math.Between(LAT_MIN + 10, LAT_MAX - 10);
   }
 
   scene.obstacles.push({
-    type, lat,
+    type, lat, length, hitRadius,
     x: SPAWN_X,
     resolvedP1: false,
     resolvedP2: false,
@@ -576,7 +1033,7 @@ function updateObstacles(scene, delta) {
     const def = OBSTACLE_DEF[ob.type];
     if (ob.type === 'hole') drawPothole(gfx, ob.x, y, def.scale);
     else if (ob.type === 'drunk') drawDrunkObstacle(gfx, ob.x, y, def.scale);
-    else if (ob.type === 'rail') drawRustyRailObstacle(gfx, ob.x, y, def.scale, 110);
+    else if (ob.type === 'rail') drawAbyssBridge(gfx, ob.x, ob.lat, def.scale, ob.length);
 
     if (ob.x < DESPAWN_X) scene.obstacles.splice(i, 1);
   }
@@ -589,10 +1046,20 @@ function checkObstacleProximity(scene, ob, player, flagKey) {
   const obY = laneY(ob.x, ob.lat);
 
   if (ob.type === 'rail') {
-    // La baranda usa proximidad en X + chequeo de zona lateral
-    if (Math.abs(ob.x - player.x) < def.hitRadius) {
-      ob[flagKey] = true;
-      resolveObstacleHit(scene, ob, player);
+    const trackX = 400 + player.prog;
+    const hitRadius = ob.hitRadius || def.hitRadius;
+    const inAbyssZone = Math.abs(ob.x - trackX) < hitRadius;
+    if (inAbyssZone) {
+      const onBridge = Math.abs(player.lat - ob.lat) <= def.bridgeHalfW;
+      const jumpingOver = player.jumping && player.jumpZ > 0.35;
+      if (!onBridge && !jumpingOver) {
+        // Se cayó al abismo al salir del puente
+        ob[flagKey] = true;
+        applyKnockback(scene, player);
+      } else if (ob.x < trackX - hitRadius + 10) {
+        // Pasó exitosamente todo el tramo del puente
+        ob[flagKey] = true;
+      }
     }
   } else {
     // Huecos y borrachos: distancia real en pantalla
@@ -600,8 +1067,20 @@ function checkObstacleProximity(scene, ob, player, flagKey) {
     const dy = obY - player.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < def.hitRadius) {
-      ob[flagKey] = true;
-      resolveObstacleHit(scene, ob, player);
+      const inHazardLane = Math.abs(player.lat - ob.lat) < def.hazardRadius;
+      if (!inHazardLane) {
+        // Pasó de largo por el lado
+        ob[flagKey] = true;
+      } else if (isClearingJump(player, ob.type)) {
+        // En el aire esquivando el obstáculo: seguro mientras se mantenga arriba
+        if (ob.x < player.x - 5) {
+          ob[flagKey] = true;
+        }
+      } else {
+        // En el suelo sobre el obstáculo -> golpe
+        ob[flagKey] = true;
+        applyKnockback(scene, player);
+      }
     }
   }
 }
@@ -611,19 +1090,11 @@ function resolveObstacleHit(scene, obstacle, player) {
   const def = OBSTACLE_DEF[obstacle.type];
 
   if (obstacle.type === 'rail') {
-    // Debe estar drifteando MUY cerca de la baranda (franja segura); si no, lo golpea
-    const inSafeZone = player.lat >= def.railSafeMin && player.lat <= def.railSafeMax;
-    if (!inSafeZone) applyKnockback(scene, player);
+    // Solo estás a salvo si estás sobre el puente (auto-montaje)
+    const onBridge = Math.abs(player.lat - obstacle.lat) <= def.bridgeHalfW;
+    if (!onBridge) applyKnockback(scene, player);
     return;
   }
-
-  // hole / drunk — hay que estar en su carril Y saltar con la potencia adecuada
-  const inHazardLane = Math.abs(player.lat - obstacle.lat) < def.hazardRadius;
-  if (!inHazardLane) return; // el obstáculo no está en su camino, pasa de largo
-
-  if (isClearingJump(player, obstacle.type)) return; // salto limpio, sin penalización
-
-  applyKnockback(scene, player);
 }
 
 // Un obstáculo fallado NO es game over: te paraliza y te empuja hacia atrás
@@ -632,7 +1103,8 @@ function applyKnockback(scene, player) {
   player.paralyzed = PARALYZE_DURATION;
   player.knockbackVel = PROG_KNOCKBACK / PARALYZE_DURATION; // retroceso suave
   player.jumping = false;
-  player.jumpCharging = false;
+  player.jumpLanding = false;
+  player.jumpTimer = 0;
   player.jumpZ = 0;
 }
 
@@ -759,10 +1231,10 @@ function startGame(scene) {
     player.alive = true;
     player.eliminatedBy = null;
     player.jumping = false;
-    player.jumpCharging = false;
-    player.jumpHeld = 0;
-    player.jumpElapsed = 0;
-    player.jumpDuration = 0;
+    player.jumpLanding = false;
+    player.jumpTimer = 0;
+    player.landTimer = 0;
+    player.landStartZ = 0;
     player.jumpZ = 0;
     player.prog = 0;
     player.paralyzed = 0;
@@ -861,10 +1333,10 @@ function handlePlayerInput(scene, player, prefix, dt) {
   // Mientras está paralizado (recién golpeado) no responde a los controles
   if (player.paralyzed <= 0) {
     let dLat = 0;
-    // Izquierda te mueve hacia el andén (arriba-derecha visualmente en la perpendicular)
-    if (held[prefix + '_L']) dLat -= 1;
-    // Derecha te mueve hacia el barranco (abajo-izquierda visualmente en la perpendicular)
-    if (held[prefix + '_R']) dLat += 1;
+    // Izquierda (A / Flecha Izq) te mueve hacia la izquierda de la pantalla
+    if (held[prefix + '_L']) dLat += 1;
+    // Derecha (D / Flecha Der) te mueve hacia la derecha de la pantalla
+    if (held[prefix + '_R']) dLat -= 1;
     if (dLat !== 0) {
       player.lat = Phaser.Math.Clamp(player.lat + dLat * latSpeed * dt, -85, 85);
     }
@@ -900,46 +1372,53 @@ function handlePlayerInput(scene, player, prefix, dt) {
 
   if (player.paralyzed > 0) return; // no puede saltar mientras está aturdido
 
-  // --- Salto variable: mantené presionado para cargar, soltá para saltar ---
-  // Hueco (obstáculo pequeño) = toque corto. Botellas+borracho (grande) = carga larga.
-  const JUMP_MIN_DURATION = 0.22;   // salto corto (toque rápido)
-  const JUMP_MAX_DURATION = 0.85;   // salto largo (carga máxima)
-  const JUMP_MAX_CHARGE   = 0.6;    // segundos de carga para llegar al salto máximo
+  // --- Salto instantáneo: despega de inmediato y se mantiene hasta 2s si se deja presionado ---
+  const MAX_JUMP_TIME = 2.0;    // Máximo tiempo total en el aire
+  const MIN_JUMP_HOLD = 0.18;   // Tiempo mínimo en el aire para un toque rápido
+  const LAND_DURATION = 0.14;   // Duración de caída/aterrizaje suave
 
   if (consumePressed(prefix + '_1') && !player.jumping) {
-    player.jumpCharging = true;
-    player.jumpHeld = 0;
-  }
-  if (player.jumpCharging) {
-    if (held[prefix + '_1']) {
-      player.jumpHeld = Math.min(player.jumpHeld + dt, JUMP_MAX_CHARGE);
-    } else {
-      // Soltó el botón: despega con una duración proporcional a la carga
-      const t = player.jumpHeld / JUMP_MAX_CHARGE;
-      player.jumpDuration = Phaser.Math.Linear(JUMP_MIN_DURATION, JUMP_MAX_DURATION, t);
-      player.jumpElapsed = 0;
-      player.jumping = true;
-      player.jumpCharging = false;
-    }
+    player.jumping = true;
+    player.jumpLanding = false;
+    player.jumpTimer = 0;
+    player.landTimer = 0;
+    player.landStartZ = 1.0;
   }
 
   if (player.jumping) {
-    player.jumpElapsed += dt;
-    if (player.jumpElapsed >= player.jumpDuration) {
-      player.jumping = false;
-      player.jumpZ = 0;
+    if (!player.jumpLanding) {
+      player.jumpTimer += dt;
+      const isHeld = held[prefix + '_1'];
+
+      // Sube instantáneamente al tope en los primeros 0.10s
+      if (player.jumpTimer < 0.10) {
+        player.jumpZ = Math.sin((player.jumpTimer / 0.10) * (Math.PI / 2));
+      } else {
+        player.jumpZ = 1.0;
+      }
+
+      // Si soltó el botón (tras el mínimo) o se alcanzó el tiempo máximo de 2.0s
+      if ((!isHeld && player.jumpTimer >= MIN_JUMP_HOLD) || player.jumpTimer >= (MAX_JUMP_TIME - LAND_DURATION)) {
+        player.jumpLanding = true;
+        player.landTimer = 0;
+        player.landStartZ = player.jumpZ;
+      }
     } else {
-      // Arco parabólico simple (0 → 1 → 0) para la altura visual
-      player.jumpZ = Math.sin(Math.PI * (player.jumpElapsed / player.jumpDuration));
+      player.landTimer += dt;
+      if (player.landTimer >= LAND_DURATION) {
+        player.jumping = false;
+        player.jumpLanding = false;
+        player.jumpZ = 0;
+      } else {
+        const t = player.landTimer / LAND_DURATION;
+        player.jumpZ = player.landStartZ * Math.cos(t * (Math.PI / 2));
+      }
     }
   }
 }
 
-// Duración de salto necesaria para "limpiar" cada tipo de obstáculo
-const JUMP_REQUIRED = { hole: 0.22, drunk: 0.55 };
-
 function isClearingJump(player, obstacleType) {
-  return player.jumping && player.jumpDuration >= JUMP_REQUIRED[obstacleType];
+  return player.jumping && player.jumpZ > 0.25;
 }
 
 function resolvePlayerCollision(scene, p1, p2) {
