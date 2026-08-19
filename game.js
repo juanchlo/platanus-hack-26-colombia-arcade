@@ -813,9 +813,9 @@ function updatePlayers(scene, delta, time) {
   handlePlayerInput(scene, p2, 'P2', dt);
   resolvePlayerCollision(scene, p1, p2);
 
-  // Pierde el jugador cuyo sprite salga del borde trasero de la pantalla
+  // Pierde el jugador que caiga demasiado atrás (prog-based = justo para ambos)
   for (const player of [p1, p2]) {
-    if (player.alive && player.x < -20) {
+    if (player.alive && player.prog < PROG_ELIMINATE) {
       player.alive = false;
       player.eliminatedBy = 'trail';
     }
@@ -829,7 +829,7 @@ function updatePlayers(scene, delta, time) {
 const PROG_MOVE_MIN = -60;
 const PROG_MOVE_MAX = 60;
 const PROG_KNOCKBACK = 50;     // cuánto te manda hacia atrás un obstáculo fallado
-const PROG_ELIMINATE = -170;   // fallback de seguridad (la condición real es salir de pantalla)
+const PROG_ELIMINATE = -300;   // 6 golpes sin recuperar = eliminado (justo para ambas posiciones laterales)
 const PARALYZE_DURATION = 0.7; // segundos paralizado tras un golpe (el knockback se aplica gradualmente)
 
 function handlePlayerInput(scene, player, prefix, dt) {
@@ -862,9 +862,17 @@ function handlePlayerInput(scene, player, prefix, dt) {
     if (held[prefix + '_U']) dProg += 1; // adelante: te adelantás en la bajada
     if (held[prefix + '_D']) dProg -= 1; // atrás: te rezagás a propósito
     if (dProg !== 0) {
-      // El movimiento voluntario respeta el rango normal; si venís de un
-      // empujón más atrás de ese rango, primero tenés que remontar hasta él.
-      player.prog = Phaser.Math.Clamp(player.prog + dProg * progSpeed * dt, PROG_MOVE_MIN, PROG_MOVE_MAX);
+      // Movimiento voluntario sin teletransporte: si el knockback te mandó
+      // más allá del rango, podés volver gradualmente, pero no ir más lejos.
+      let newProg = player.prog + dProg * progSpeed * dt;
+      if (dProg > 0) {
+        newProg = Math.min(newProg, PROG_MOVE_MAX);   // no pasar del máximo
+        newProg = Math.max(newProg, player.prog);      // nunca retroceder al avanzar
+      } else {
+        newProg = Math.max(newProg, PROG_MOVE_MIN);   // no pasar del mínimo
+        newProg = Math.min(newProg, player.prog);      // nunca avanzar al retroceder
+      }
+      player.prog = newProg;
     }
   }
 
