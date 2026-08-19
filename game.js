@@ -356,14 +356,17 @@ function renderOnePlayer(gfx, player, time, speed) {
     gfx.fillCircle(player.x, player.y, 46);
   }
 
+  // Frecuencia de ondeo: crece linealmente con velocidad hasta doblar, nunca baja
+  const targetWF = 0.008 + Math.min(speed / 150, 1) * 0.292;
+  player._wF = Math.max(player._wF || 0.008, targetWF);
+
   // Canasta y personaje suben juntos; al bajar el personaje cae más lento (flotación)
   const liftY = player.y - player.jumpZ * 46;
-  // Durante la bajada el personaje usa jumpZ^0.4 (cae más lento que la canasta)
   const charJZ = descending ? Math.pow(player.jumpZ, 0.4) : player.jumpZ;
   const charY  = player.y - charJZ * 46;
   drawBeerCrate(gfx, player.x, liftY, 3);
-  if (player.label === 'P1') drawNea(gfx, player.x, charY, 3, time, speed, charJZ);
-  else drawChango(gfx, player.x, charY, 3, time, speed, charJZ);
+  if (player.label === 'P1') drawNea(gfx, player.x, charY, 3, time, speed, charJZ, player._wF);
+  else drawChango(gfx, player.x, charY, 3, time, speed, charJZ, player._wF);
 }
 
 // ---------------------------------------------------------------------------
@@ -989,7 +992,7 @@ function checkPlayerElimination(scene) {
 //
 // cx, cy = same anchor as drawBeerCrate (center of front face)
 // ---------------------------------------------------------------------------
-function drawNea(gfx, cx, cy, scale, time, speed, jumpZ) {
+function drawNea(gfx, cx, cy, scale, time, speed, jumpZ, waveF) {
   const s = scale || 3;
   const r = (v) => Math.round(v * s);
   const baseY = cy - r(3.5);
@@ -997,9 +1000,18 @@ function drawNea(gfx, cx, cy, scale, time, speed, jumpZ) {
 
   // ── Animación idle + salto
   const t = time || 0;
-  const hairWave = Math.round(Math.sin(t * 0.005) * 12);
-  const hairBob  = Math.round(Math.sin(t * 0.005 + 0.8) * 4);
+  const spd = speed || 0;
+  const wF = waveF || 0.008;
+  const hairWave = Math.round(Math.sin(t * wF) * 5);
+  const hairBob  = Math.round(Math.sin(t * wF + 0.8) * 2);
   const blink = (t % 3000) < 100;
+
+  // Lean angular: 1° por cada 10 km/h, máx 75° desde vertical (15° de la horizontal)
+  const ang = Math.min(spd / 10, 75) * Math.PI / 180;
+  const sinL = Math.sin(ang), cosL1 = 1 - Math.cos(ang);
+  const lax = Math.round(r(2.0) * sinL), lay = Math.round(r(2.0) * cosL1);
+  const lnx = Math.round(r(5.0) * sinL), lny = Math.round(r(5.0) * cosL1);
+  const lhx = Math.round(r(7.9) * sinL), lhy = Math.round(r(7.9) * cosL1);
 
   // ── TENIS VERDE
   gfx.fillStyle(0x33dd44, 1);
@@ -1020,35 +1032,35 @@ function drawNea(gfx, cx, cy, scale, time, speed, jumpZ) {
 
   // ── RIÑONERA AZUL
   gfx.fillStyle(0x2288ff, 1);
-  gfx.fillRect(bx - r(3.8), baseY - r(3.2), r(2.8), r(1.5));
+  gfx.fillRect(bx - r(3.8) + lax, baseY - r(3.2) + lay, r(2.8), r(1.5));
   gfx.fillStyle(0x88aaff, 1);
-  gfx.fillRect(bx - r(2.7), baseY - r(3.1), r(1),   r(1.3));
+  gfx.fillRect(bx - r(2.7) + lax, baseY - r(3.1) + lay, r(1),   r(1.3));
 
   // ── BRAZO IZQUIERDO
   gfx.fillStyle(0xb56030, 1);
-  gfx.fillRect(bx,          baseY - r(6.5), r(1.5), r(1.5));
-  gfx.fillRect(bx + r(1.4), baseY - r(6.3), r(2.8), r(1.3));
-  gfx.fillRect(bx + r(3.7), baseY - r(6.3), r(1.3), r(3.8));
+  gfx.fillRect(bx          + lax, baseY - r(6.5) + lay, r(1.5), r(1.5));
+  gfx.fillRect(bx + r(1.4) + lax, baseY - r(6.3) + lay, r(2.8), r(1.3));
+  gfx.fillRect(bx + r(3.7) + lax, baseY - r(6.3) + lay, r(1.3), r(3.8));
   gfx.fillStyle(0xc47840, 1);
-  gfx.fillRect(bx + r(3.4), baseY - r(2.5), r(1.8), r(1));
+  gfx.fillRect(bx + r(3.4) + lax, baseY - r(2.5) + lay, r(1.8), r(1));
 
   // ── TORSO FUCSIA
   gfx.fillStyle(0xdd1180, 1);
-  gfx.fillRect(bx - r(2.7), baseY - r(6.8), r(4.2), r(5.5));
+  gfx.fillRect(bx - r(2.7) + lax, baseY - r(6.8) + lay, r(4.2), r(5.5));
   gfx.fillStyle(0xbb0f70, 1);
-  gfx.fillRect(bx + r(0.7), baseY - r(6.8), r(0.8), r(5.5));
+  gfx.fillRect(bx + r(0.7) + lax, baseY - r(6.8) + lay, r(0.8), r(5.5));
   gfx.fillStyle(0x44bbff, 1);
-  gfx.fillCircle(bx - r(1), baseY - r(4.8), r(0.9));
+  gfx.fillCircle(bx - r(1) + lax, baseY - r(4.8) + lay, r(0.9));
   gfx.fillStyle(0xffee44, 1);
-  gfx.fillCircle(bx - r(1), baseY - r(4.8), r(0.45));
+  gfx.fillCircle(bx - r(1) + lax, baseY - r(4.8) + lay, r(0.45));
 
   // ── CUELLO
   gfx.fillStyle(0xc47840, 1);
-  gfx.fillRect(bx - r(2.1), baseY - r(8.2), r(1.6), r(1.8));
+  gfx.fillRect(bx - r(2.1) + lnx, baseY - r(8.2) + lny, r(1.6), r(1.8));
 
   // ── CABEZA
-  const headX = bx - r(1.3);
-  const headY = baseY - r(10.4);
+  const headX = bx - r(1.3) + lhx;
+  const headY = baseY - r(10.4) + lhy;
 
   gfx.fillStyle(0xc47840, 1);
   gfx.fillCircle(headX, headY, r(2.2));
@@ -1138,7 +1150,7 @@ function drawNea(gfx, cx, cy, scale, time, speed, jumpZ) {
 //
 // cx, cy = mismo anchor que drawBeerCrate (centro de la cara frontal)
 // ---------------------------------------------------------------------------
-function drawChango(gfx, cx, cy, scale, time, speed, jumpZ) {
+function drawChango(gfx, cx, cy, scale, time, speed, jumpZ, waveF) {
   const base = scale || 3;
   const s = base * 1.15;                          // 15% más grande que Nea
   const r = (v) => Math.round(v * s);
@@ -1148,14 +1160,20 @@ function drawChango(gfx, cx, cy, scale, time, speed, jumpZ) {
   // ── Animación idle
   const t = time || 0;
   const spd = speed || 0;
-  const leanX = Math.round((spd / 900) * 18);              // 0–18px inclinación
-  const tailWave = Math.round(Math.sin(t * 0.006) * 13);   // ±13px onda horizontal cola
-  const tailBob  = Math.round(Math.sin(t * 0.006 + 1.0) * 5); // ±5px onda vertical
-  const blink = (t % 2800) < 110;                          // parpadeo cada 2.8 s
-  const ubx = bx + leanX;                                  // pivot cuerpo superior
+  const wF = waveF || 0.008;
+  const tailWave = Math.round(Math.sin(t * wF) * 6);
+  const tailBob  = Math.round(Math.sin(t * wF + 1.0) * 2);
+  const blink = (t % 2800) < 110;
+
+  // Lean angular: 1° por cada 10 km/h, máx 75° desde vertical (15° de la horizontal)
+  const ang = Math.min(spd / 10, 75) * Math.PI / 180;
+  const sinL = Math.sin(ang), cosL1 = 1 - Math.cos(ang);
+  const lax = Math.round(r(2.5) * sinL), lay = Math.round(r(2.5) * cosL1);
+  const lnx = Math.round(r(4.5) * sinL), lny = Math.round(r(4.5) * cosL1);
+  const lhx = Math.round(r(7.4) * sinL), lhy = Math.round(r(7.4) * cosL1);
 
   // ── COLA — cinta continua de raíz a punta, ondula con el viento
-  const cRX = ubx - r(2.7);                                   // raíz: borde izq del torso
+  const cRX = bx - r(2.7) + lax;                              // raíz: borde izq del torso
   const cRY = baseY - r(3.8);
   const cMX = bx - r(6.5) + Math.round(tailWave * 0.4);     // punto medio
   const cMY = baseY - r(6.5);
@@ -1196,29 +1214,29 @@ function drawChango(gfx, cx, cy, scale, time, speed, jumpZ) {
   gfx.fillStyle(0x000000, 1);
   gfx.fillRect(bx - r(0.2), baseY - r(3.0), r(0.4), r(0.5));
 
-  // ── BRAZO IZQUIERDO (con lean)
+  // ── BRAZO IZQUIERDO
   gfx.fillStyle(0xcc2222, 1);
-  gfx.fillRect(ubx,          baseY - r(6.5), r(1.5), r(1.5));
-  gfx.fillRect(ubx + r(1.4), baseY - r(6.3), r(2.8), r(1.3));
-  gfx.fillRect(ubx + r(3.7), baseY - r(6.3), r(1.3), r(3.5));
+  gfx.fillRect(bx          + lax, baseY - r(6.5) + lay, r(1.5), r(1.5));
+  gfx.fillRect(bx + r(1.4) + lax, baseY - r(6.3) + lay, r(2.8), r(1.3));
+  gfx.fillRect(bx + r(3.7) + lax, baseY - r(6.3) + lay, r(1.3), r(3.5));
   gfx.fillStyle(0xbb1111, 1);
-  gfx.fillRect(ubx + r(3.3), baseY - r(3.0), r(2.0), r(1.5));
+  gfx.fillRect(bx + r(3.3) + lax, baseY - r(3.0) + lay, r(2.0), r(1.5));
 
-  // ── TORSO ROJO (con lean)
+  // ── TORSO ROJO
   gfx.fillStyle(0xcc2222, 1);
-  gfx.fillRect(ubx - r(2.7), baseY - r(6.8), r(4.2), r(4.5));
+  gfx.fillRect(bx - r(2.7) + lax, baseY - r(6.8) + lay, r(4.2), r(4.5));
   gfx.fillStyle(0xaa1111, 1);
-  gfx.fillRect(ubx + r(0.7), baseY - r(6.8), r(0.8), r(4.5));
+  gfx.fillRect(bx + r(0.7) + lax, baseY - r(6.8) + lay, r(0.8), r(4.5));
   gfx.fillStyle(0xdd3333, 1);
-  gfx.fillRect(ubx - r(2.0), baseY - r(6.5), r(2.0), r(1.5));
+  gfx.fillRect(bx - r(2.0) + lax, baseY - r(6.5) + lay, r(2.0), r(1.5));
 
-  // ── CUELLO (con lean)
+  // ── CUELLO
   gfx.fillStyle(0xcc2222, 1);
-  gfx.fillRect(ubx - r(2.1), baseY - r(8.2), r(1.6), r(1.8));
+  gfx.fillRect(bx - r(2.1) + lnx, baseY - r(8.2) + lny, r(1.6), r(1.8));
 
-  // ── CABEZA (con lean)
-  const headX = ubx - r(1.3);
-  const headY = baseY - r(10.4);
+  // ── CABEZA
+  const headX = bx - r(1.3) + lhx;
+  const headY = baseY - r(10.4) + lhy;
 
   // CUERNO TRASERO (izquierda = atrás) — detrás de la cabeza
   gfx.fillStyle(0x880000, 1);
