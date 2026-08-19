@@ -340,6 +340,14 @@ function renderPlayers(scene, time, speed) {
 function renderOnePlayer(gfx, player, time, speed) {
   if (!player.alive) return;
 
+  // Landing squash — detectar transición jumpZ > 0 → 0
+  const prevJZ = player._prevJZ || 0;
+  if (prevJZ > 0.05 && player.jumpZ <= 0.05) player._landTime = time;
+  player._prevJZ = player.jumpZ;
+  const sinceLand = (player._landTime && player.jumpZ <= 0.05) ? time - player._landTime : 9999;
+  // squashPx: desplaza el personaje hacia abajo 0→8px durante 120ms para simular aplastamiento
+  const squashPx = sinceLand < 120 ? Math.round((1 - sinceLand / 120) * 8) : 0;
+
   // Sombra en el piso (se achica mientras el jugador está en el aire)
   const shrink = 1 - player.jumpZ * 0.5;
   gfx.fillStyle(0x000000, 0.3);
@@ -351,11 +359,12 @@ function renderOnePlayer(gfx, player, time, speed) {
     gfx.fillCircle(player.x, player.y, 46);
   }
 
-  // La canasta se eleva visualmente durante el salto (eje Z falso)
+  // Canasta sube con jumpZ; personaje sube 40% más (se despega de la canasta)
   const liftY = player.y - player.jumpZ * 46;
+  const charY  = player.y - player.jumpZ * 64.4 + squashPx;
   drawBeerCrate(gfx, player.x, liftY, 3);
-  if (player.label === 'P1') drawNea(gfx, player.x, liftY, 3, time, speed);
-  else drawChango(gfx, player.x, liftY, 3, time, speed);
+  if (player.label === 'P1') drawNea(gfx, player.x, charY, 3, time, speed, player.jumpZ);
+  else drawChango(gfx, player.x, charY, 3, time, speed, player.jumpZ);
 }
 
 // ---------------------------------------------------------------------------
@@ -981,22 +990,19 @@ function checkPlayerElimination(scene) {
 //
 // cx, cy = same anchor as drawBeerCrate (center of front face)
 // ---------------------------------------------------------------------------
-function drawNea(gfx, cx, cy, scale, time, speed) {
+function drawNea(gfx, cx, cy, scale, time, speed, jumpZ) {
   const s = scale || 3;
   const r = (v) => Math.round(v * s);
   const baseY = cy - r(3.5);
   const bx = cx;
 
-  // ── Animación idle
+  // ── Animación idle + salto
   const t = time || 0;
-  const spd = speed || 0;
-  const leanX = Math.round((spd / 900) * 18);             // 0–18px inclinación al frente
-  const hairWave = Math.round(Math.sin(t * 0.005) * 12);  // ±12px onda horizontal coleta
-  const hairBob  = Math.round(Math.sin(t * 0.005 + 0.8) * 4); // ±4px onda vertical coleta
-  const blink = (t % 3000) < 100;                         // parpadeo cada 3 s × 100 ms
-  const ubx = bx + leanX;                                 // pivot cuerpo superior
+  const hairWave = Math.round(Math.sin(t * 0.005) * 12);
+  const hairBob  = Math.round(Math.sin(t * 0.005 + 0.8) * 4);
+  const blink = (t % 3000) < 100;
 
-  // ── TENIS VERDE (cuerpo inferior — sin lean)
+  // ── TENIS VERDE
   gfx.fillStyle(0x33dd44, 1);
   gfx.fillRect(bx + r(1.3), baseY + r(1.5), r(4.2), r(1.6));
   gfx.fillStyle(0x1a8830, 1);
@@ -1004,45 +1010,45 @@ function drawNea(gfx, cx, cy, scale, time, speed) {
   gfx.fillStyle(0xaaeeaa, 1);
   gfx.fillRect(bx + r(3.3), baseY + r(1.5), r(1.2), r(0.6));
 
-  // ── PIERNA (sin lean)
+  // ── PIERNA
   gfx.fillStyle(0x111122, 1);
   gfx.fillRect(bx + r(2.5), baseY + r(0.2), r(2.5), r(1.5));
   gfx.fillRect(bx,          baseY - r(0.5), r(4),   r(1.2));
 
-  // ── SHORTS (sin lean)
+  // ── SHORTS
   gfx.fillStyle(0x1a1a2e, 1);
   gfx.fillRect(bx - r(2.5), baseY - r(1.8), r(4), r(1.8));
 
-  // ── RIÑONERA AZUL (cuerpo superior — con lean)
+  // ── RIÑONERA AZUL
   gfx.fillStyle(0x2288ff, 1);
-  gfx.fillRect(ubx - r(3.8), baseY - r(3.2), r(2.8), r(1.5));
+  gfx.fillRect(bx - r(3.8), baseY - r(3.2), r(2.8), r(1.5));
   gfx.fillStyle(0x88aaff, 1);
-  gfx.fillRect(ubx - r(2.7), baseY - r(3.1), r(1),   r(1.3));
+  gfx.fillRect(bx - r(2.7), baseY - r(3.1), r(1),   r(1.3));
 
-  // ── BRAZO IZQUIERDO (con lean)
+  // ── BRAZO IZQUIERDO
   gfx.fillStyle(0xb56030, 1);
-  gfx.fillRect(ubx,          baseY - r(6.5), r(1.5), r(1.5));
-  gfx.fillRect(ubx + r(1.4), baseY - r(6.3), r(2.8), r(1.3));
-  gfx.fillRect(ubx + r(3.7), baseY - r(6.3), r(1.3), r(3.8));
+  gfx.fillRect(bx,          baseY - r(6.5), r(1.5), r(1.5));
+  gfx.fillRect(bx + r(1.4), baseY - r(6.3), r(2.8), r(1.3));
+  gfx.fillRect(bx + r(3.7), baseY - r(6.3), r(1.3), r(3.8));
   gfx.fillStyle(0xc47840, 1);
-  gfx.fillRect(ubx + r(3.4), baseY - r(2.5), r(1.8), r(1));
+  gfx.fillRect(bx + r(3.4), baseY - r(2.5), r(1.8), r(1));
 
-  // ── TORSO FUCSIA (con lean)
+  // ── TORSO FUCSIA
   gfx.fillStyle(0xdd1180, 1);
-  gfx.fillRect(ubx - r(2.7), baseY - r(6.8), r(4.2), r(5.5));
+  gfx.fillRect(bx - r(2.7), baseY - r(6.8), r(4.2), r(5.5));
   gfx.fillStyle(0xbb0f70, 1);
-  gfx.fillRect(ubx + r(0.7), baseY - r(6.8), r(0.8), r(5.5));
+  gfx.fillRect(bx + r(0.7), baseY - r(6.8), r(0.8), r(5.5));
   gfx.fillStyle(0x44bbff, 1);
-  gfx.fillCircle(ubx - r(1), baseY - r(4.8), r(0.9));
+  gfx.fillCircle(bx - r(1), baseY - r(4.8), r(0.9));
   gfx.fillStyle(0xffee44, 1);
-  gfx.fillCircle(ubx - r(1), baseY - r(4.8), r(0.45));
+  gfx.fillCircle(bx - r(1), baseY - r(4.8), r(0.45));
 
-  // ── CUELLO (con lean)
+  // ── CUELLO
   gfx.fillStyle(0xc47840, 1);
-  gfx.fillRect(ubx - r(2.1), baseY - r(8.2), r(1.6), r(1.8));
+  gfx.fillRect(bx - r(2.1), baseY - r(8.2), r(1.6), r(1.8));
 
-  // ── CABEZA (con lean)
-  const headX = ubx - r(1.3);
+  // ── CABEZA
+  const headX = bx - r(1.3);
   const headY = baseY - r(10.4);
 
   gfx.fillStyle(0xc47840, 1);
