@@ -83,11 +83,11 @@ async function storageSet(key, val) { return getStorage().set(key, val); }
 // Retro Scoreboard & Leaderboard (Hall of Fame)
 // ---------------------------------------------------------------------------
 const DEFAULT_SCORES = [
-  { rank: 1, name: 'NEA', score: 45000, dist: 1250 },
-  { rank: 2, name: 'CHG', score: 38200, dist: 1040 },
-  { rank: 3, name: 'CAL', score: 29500, dist: 850 },
-  { rank: 4, name: 'SAO', score: 21000, dist: 620 },
-  { rank: 5, name: 'PLT', score: 15000, dist: 480 },
+  { rank: 1, matchup: 'NEAA VS CHGO', score: 45000, dist: 1250 },
+  { rank: 2, matchup: 'CALI VS DIAB', score: 38200, dist: 1040 },
+  { rank: 3, matchup: 'SANT VS ANTO', score: 29500, dist: 850 },
+  { rank: 4, matchup: 'PLAT VS HACK', score: 21000, dist: 620 },
+  { rank: 5, matchup: 'BOG2 VS CAL1', score: 15000, dist: 480 },
 ];
 
 function padScore(num) {
@@ -132,28 +132,29 @@ async function loadLeaderboard(scene) {
     scene.hud.hiScore.setText(`HIGH SCORE\n${padScore(scene.gameState.highScore)}`);
   }
   if (scene.startHiScoreText) {
-    scene.startHiScoreText.setText(`TOP RECORD: ${padScore(scene.gameState.highScore)} · ${scene.gameState.leaderboard[0].name}`);
+    const topM = scene.gameState.leaderboard[0]?.matchup || scene.gameState.leaderboard[0]?.name || 'NEAA VS CHGO';
+    scene.startHiScoreText.setText(`★ RÉCORD: ${padScore(scene.gameState.highScore)} · ${topM} ★`);
   }
 }
 
-async function recordHighScore(scene, p1Score, p2Score, distance) {
+async function recordHighScore(scene, matchup, p1Score, p2Score, distance) {
   const dist = Math.round(distance);
   let lb = scene.gameState.leaderboard || JSON.parse(JSON.stringify(DEFAULT_SCORES));
-  let achievedNewRecord = false;
+  const topScore = Math.max(Math.round(p1Score), Math.round(p2Score));
 
-  const candidates = [
-    { name: 'P1-NEA', score: Math.round(p1Score), dist },
-    { name: 'P2-CHG', score: Math.round(p2Score), dist },
-  ];
+  const candidate = {
+    matchup: matchup || 'P1P1 VS P2P2',
+    score: topScore,
+    dist,
+  };
 
-  for (const cand of candidates) {
-    if (cand.score > 0 && (lb.length < 5 || cand.score > lb[lb.length - 1].score)) {
-      lb.push(cand);
-      achievedNewRecord = true;
-    }
+  let isNewHigh = false;
+  if (topScore > 0 && (lb.length < 5 || topScore > (lb[lb.length - 1]?.score || 0))) {
+    lb.push(candidate);
+    isNewHigh = true;
   }
 
-  if (achievedNewRecord) {
+  if (isNewHigh) {
     lb.sort((a, b) => b.score - a.score);
     lb = lb.slice(0, 5);
     for (let i = 0; i < lb.length; i++) lb[i].rank = i + 1;
@@ -164,7 +165,7 @@ async function recordHighScore(scene, p1Score, p2Score, distance) {
     } catch (_) {}
   }
 
-  return { leaderboard: lb, isNewHigh: achievedNewRecord };
+  return { leaderboard: lb, isNewHigh, candidate };
 }
 
 // ---------------------------------------------------------------------------
@@ -200,15 +201,19 @@ function create() {
     musicStarted: false,
     highScore: 45000,
     leaderboard: null,
+    gameMode: '2P',   // '1P' (vs CPU) | '2P' (1 vs 1)
   };
 
   // Build all layers (start hidden as needed)
   createBackground(scene);
   createTrack(scene);
+  createParticleSystem(scene);
   createPlayers(scene);
   createObstaclePool(scene);
   createHud(scene);
   createStartScreen(scene);
+  createLeaderboardScreen(scene);
+  createNameEntryScreen(scene);
   createGameOverScreen(scene);
 
   loadLeaderboard(scene);
@@ -224,8 +229,19 @@ function update(time, delta) {
     return;
   }
 
+  if (scene.phase === 'leaderboard_view') {
+    updateLeaderboardScreen(scene, time);
+    return;
+  }
+
+  if (scene.phase === 'name_entry') {
+    updateNameEntryScreen(scene, time);
+    return;
+  }
+
   if (scene.phase === 'playing') {
     updateScroll(scene, delta);
+    updateParticles(scene, delta);
     updatePlayers(scene, delta, time);
     updateObstacles(scene, delta);
     checkPlayerElimination(scene);
@@ -459,6 +475,119 @@ function renderTrack(scene, distance) {
   }
 }
 
+function createParticleSystem(scene) {
+  scene.particles = [];
+  scene.particleGraphics = scene.add.graphics().setDepth(4);
+}
+
+function resetParticles(scene) {
+  if (scene.particles) scene.particles.length = 0;
+  if (scene.particleGraphics) scene.particleGraphics.clear();
+}
+
+function emitSlideParticles(scene, player, speed, dt) {
+  if (!player.alive || player.jumping || player.jumpZ > 0.05) return;
+
+  // Tasa de emisión escala fuertemente con la velocidad (de ~20/s a 200 km/h hasta ~90/s a 900 km/h)
+  const normSpd = Math.max(0, Math.min(1, (speed - 200) / 700));
+  const rate = Phaser.Math.Linear(20, 90, normSpd);
+  const count = Math.random() < (rate * dt) ? (normSpd > 0.5 && Math.random() < 0.4 ? 2 : 1) : 0;
+  if (count <= 0) return;
+
+  for (let i = 0; i < count; i++) {
+    // Puntos de contacto de la canasta con el asfalto (esquinas y base)
+    const offsetX = Phaser.Math.Between(-14, 14);
+    const offsetY = Phaser.Math.Between(12, 17);
+    const px = player.x + offsetX;
+    const py = player.y + offsetY;
+
+    const isSpark = Math.random() < 0.7; // 70% chispas de fricción, 30% polvillo/humo
+    if (isSpark) {
+      // Chispas salen disparadas hacia atrás y hacia arriba por la fricción del pavimento
+      const angle = Math.PI * 0.75 + Phaser.Math.FloatBetween(-0.55, 0.55);
+      const spd = Phaser.Math.FloatBetween(40, 130) * (0.8 + normSpd * 0.8);
+      const sparkColors = [0xffdd00, 0xff9900, 0xffffff, 0xff4400];
+      scene.particles.push({
+        x: px,
+        y: py,
+        vx: Math.cos(angle) * spd - (speed * 0.22),
+        vy: Math.sin(angle) * spd * 0.35 - Phaser.Math.FloatBetween(12, 35),
+        life: 0,
+        maxLife: Phaser.Math.FloatBetween(0.12, 0.28),
+        size: Phaser.Math.FloatBetween(1.8, 3.2),
+        color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
+        alpha: 1,
+        type: 'spark',
+      });
+    } else {
+      // Polvillo / humo de fricción en el asfalto
+      scene.particles.push({
+        x: px,
+        y: py,
+        vx: Phaser.Math.FloatBetween(-20, -5) - (speed * 0.12),
+        vy: Phaser.Math.FloatBetween(-8, -20),
+        life: 0,
+        maxLife: Phaser.Math.FloatBetween(0.2, 0.45),
+        size: Phaser.Math.FloatBetween(2.5, 5.0),
+        color: 0x9999aa,
+        alpha: 0.45,
+        type: 'smoke',
+      });
+    }
+  }
+}
+
+function emitLandingBurst(scene, player, speed) {
+  if (!player.alive) return;
+  const num = 12;
+  for (let i = 0; i < num; i++) {
+    const angle = (i / num) * Math.PI * 2;
+    const spd = Phaser.Math.FloatBetween(35, 100);
+    const sparkColors = [0xffdd00, 0xff7700, 0xffffff, 0xff3300];
+    scene.particles.push({
+      x: player.x + Phaser.Math.Between(-12, 12),
+      y: player.y + 14,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd * 0.5 - 15,
+      life: 0,
+      maxLife: Phaser.Math.FloatBetween(0.15, 0.35),
+      size: Phaser.Math.FloatBetween(2, 3.5),
+      color: sparkColors[i % sparkColors.length],
+      alpha: 1,
+      type: 'spark',
+    });
+  }
+}
+
+function updateParticles(scene, delta) {
+  const dt = delta / 1000;
+  const gfx = scene.particleGraphics;
+  if (!gfx) return;
+  gfx.clear();
+
+  for (let i = scene.particles.length - 1; i >= 0; i--) {
+    const p = scene.particles[i];
+    p.life += dt;
+    if (p.life >= p.maxLife) {
+      scene.particles.splice(i, 1);
+      continue;
+    }
+
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    const progress = p.life / p.maxLife;
+    const curAlpha = p.alpha * (1 - progress);
+
+    if (p.type === 'spark') {
+      gfx.fillStyle(p.color, curAlpha);
+      gfx.fillRect(p.x, p.y, p.size, p.size);
+    } else {
+      gfx.fillStyle(p.color, curAlpha * 0.4);
+      gfx.fillCircle(p.x, p.y, p.size * (1 + progress * 0.7));
+    }
+  }
+}
+
 function createPlayers(scene) {
   scene.players = {
     p1: {
@@ -495,20 +624,23 @@ function renderPlayers(scene, time, speed) {
   scene.p1Gfx.clear();
   scene.p2Gfx.clear();
   const { p1, p2 } = scene.players;
-  renderOnePlayer(scene.p1Gfx, p1, time, speed);
-  renderOnePlayer(scene.p2Gfx, p2, time, speed);
+  renderOnePlayer(scene.p1Gfx, p1, time, speed, scene);
+  renderOnePlayer(scene.p2Gfx, p2, time, speed, scene);
 }
 
-function renderOnePlayer(gfx, player, time, speed) {
+function renderOnePlayer(gfx, player, time, speed, scene) {
   if (!player.alive) return;
 
   // Parpadeo al estar paralizado: alterna opacidad cada 80ms
   const blinking = player.paralyzed > 0 && Math.floor((time || 0) / 80) % 2 === 0;
   gfx.setAlpha(blinking ? 0.25 : 1.0);
 
-  // Landing squash — detectar transición jumpZ > 0 → 0
+  // Landing squash & burst — detectar transición jumpZ > 0 → 0
   const prevJZ = player._prevJZ || 0;
   const descending = prevJZ > player.jumpZ && player.jumpZ > 0.01;
+  if (prevJZ > 0.08 && player.jumpZ <= 0.01 && !player.jumping && scene) {
+    emitLandingBurst(scene, player, speed);
+  }
   player._prevJZ = player.jumpZ;
 
   // Sombra en el piso (se achica mientras el jugador está en el aire)
@@ -526,10 +658,15 @@ function renderOnePlayer(gfx, player, time, speed) {
   const targetWF = 0.0008 + Math.min(speed / 600, 1) * 0.0292;
   player._wF = Math.max(player._wF || 0.008, targetWF);
 
+  // Trepidación / vibración mecánica sobre el asfalto a altas velocidades
+  const isGrounded = (!player.jumping || player.jumpZ <= 0.02) && player.paralyzed <= 0;
+  const jitterAmp = isGrounded ? Math.min(1.2, (speed / 900) * 1.2) : 0;
+  const jitterY = jitterAmp > 0 ? (Math.sin((time || 0) * 0.05 + (player.label === 'P1' ? 0 : 2.5)) * jitterAmp) : 0;
+
   // Canasta y personaje suben juntos; al bajar el personaje cae más lento (flotación)
-  const liftY = player.y - player.jumpZ * 46;
+  const liftY = player.y - player.jumpZ * 46 + jitterY;
   const charJZ = descending ? Math.pow(player.jumpZ, 0.4) : player.jumpZ;
-  const charY  = player.y - charJZ * 46;
+  const charY  = player.y - charJZ * 46 + jitterY;
   const pushDir = (player._pushT && (time - player._pushT) < 350) ? player._pushDir : 0;
   drawBeerCrate(gfx, player.x, liftY, 3);
   if (player.label === 'P1') drawNea(gfx, player.x, charY, 3, time, speed, charJZ, player._wF, pushDir);
@@ -1145,22 +1282,22 @@ function checkObstacleProximity(scene, ob, player, flagKey) {
   const obY = laneY(ob.x, ob.lat);
 
   if (ob.type === 'rail') {
-    const trackX = 400 + player.prog;
-    const hitRadius = ob.hitRadius || def.hitRadius;
-    const inAbyssZone = Math.abs(ob.x - trackX) < hitRadius;
+    const halfLen = (ob.length || 80) / 2;
+    // El abismo está activo en la coordenada X exacta donde se ubica el jugador en pantalla
+    const inAbyssZone = (player.x >= ob.x - halfLen - 12) && (player.x <= ob.x + halfLen + 12);
     if (inAbyssZone) {
       const onBridge = Math.abs(player.lat - ob.lat) <= def.bridgeHalfW;
       const jumpingOver = player.jumping && player.jumpZ > 0.35;
       if (!onBridge && !jumpingOver) {
-        // Se cayó al abismo al salir del puente
+        // Cae al abismo apenas toca el hueco en pantalla
         ob[flagKey] = true;
         applyKnockback(scene, player);
-      } else if (ob.x < trackX - hitRadius + 10) {
-        // Pasó exitosamente todo el tramo del puente
-        ob[flagKey] = true;
-        player.score += 600;
-        showScorePopup(scene, player.x, player.y - 35, '+600 DRIFT!', '#00ffff');
       }
+    } else if (ob.x + halfLen < player.x - 10 && !ob[flagKey]) {
+      // Pasó exitosamente todo el tramo del puente
+      ob[flagKey] = true;
+      player.score += 600;
+      showScorePopup(scene, player.x, player.y - 35, '+600 DRIFT!', '#00ffff');
     }
   } else {
     // Huecos y borrachos: distancia real en pantalla
@@ -1261,70 +1398,427 @@ function updateHud(scene) {
 }
 
 // ---------------------------------------------------------------------------
-// Start screen
+// Start screen — Splash Menu & Mode Selection
 // ---------------------------------------------------------------------------
+const MENU_ITEMS = [
+  '1 JUGADOR  (VS CPU)',
+  '2 JUGADORES (1 VS 1)',
+  'TABLA DE RÉCORDS (TOP 5)',
+];
+
 function createStartScreen(scene) {
   const c = scene.add.container(0, 0).setDepth(20);
   c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x080810, 0.93));
 
-  c.add(scene.add.text(W / 2, 60, 'PLATANUS HACK 26', {
-    fontFamily: 'monospace', fontSize: '13px', color: '#886600',
+  // Título e Identidad Visual
+  c.add(scene.add.text(W / 2, 45, 'PLATANUS HACK 26 · ARCADE', {
+    fontFamily: 'monospace', fontSize: '13px', color: '#886600', fontStyle: 'bold',
   }).setOrigin(0.5));
-  c.add(scene.add.text(W / 2, 88, 'SAN ANTONIO DRIFT', {
-    fontFamily: 'monospace', fontSize: '38px', color: '#ffdd00', fontStyle: 'bold',
+  c.add(scene.add.text(W / 2, 74, 'SAN ANTONIO DRIFT', {
+    fontFamily: 'monospace', fontSize: '36px', color: '#ffdd00', fontStyle: 'bold',
+    stroke: '#000000', strokeThickness: 5,
   }).setOrigin(0.5));
-  c.add(scene.add.text(W / 2, 142, 'BARRIO SAN ANTONIO · CALI, COLOMBIA', {
-    fontFamily: 'monospace', fontSize: '12px', color: '#666644',
+  c.add(scene.add.text(W / 2, 114, 'BARRIO SAN ANTONIO · CALI, COLOMBIA', {
+    fontFamily: 'monospace', fontSize: '12px', color: '#888866',
   }).setOrigin(0.5));
 
   // High Score Attract Mode Ticker
-  scene.startHiScoreText = scene.add.text(W / 2, 172, 'TOP RECORD: 045000 (NEA)', {
+  scene.startHiScoreText = scene.add.text(W / 2, 138, '★ RÉCORD: 045000 · NEAA VS CHGO ★', {
     fontFamily: 'monospace', fontSize: '12px', color: '#00ffcc', fontStyle: 'bold',
   }).setOrigin(0.5);
   c.add(scene.startHiScoreText);
 
-  // Crate + character preview
+  // Crate + character preview (Nea y Changó)
   const previewGfx = scene.add.graphics();
-  const crateY = 285;
-  const cx1 = W / 2 - 72;
-  const cx2 = W / 2 + 72;
-  drawBeerCrate(previewGfx, cx1, crateY, 4);
-  drawNea(previewGfx, cx1, crateY, 4);           // P1 = Nea
-  drawBeerCrate(previewGfx, cx2, crateY, 4);
-  drawChango(previewGfx, cx2, crateY, 4);        // P2 = Changó
+  const crateY = 216;
+  const cx1 = W / 2 - 76;
+  const cx2 = W / 2 + 76;
+  drawBeerCrate(previewGfx, cx1, crateY, 3.8);
+  drawNea(previewGfx, cx1, crateY, 3.8);           // P1 = Nea
+  drawBeerCrate(previewGfx, cx2, crateY, 3.8);
+  drawChango(previewGfx, cx2, crateY, 3.8);        // P2 = Changó
   c.add(previewGfx);
 
-  c.add(scene.add.text(cx1, 315, 'P1  NEA', {
-    fontFamily: 'monospace', fontSize: '11px', color: '#ff5555',
+  c.add(scene.add.text(cx1, 244, 'P1  NEA', {
+    fontFamily: 'monospace', fontSize: '11px', color: '#ff5555', fontStyle: 'bold',
   }).setOrigin(0.5));
-  c.add(scene.add.text(cx2, 315, 'P2  CHANGO', {
-    fontFamily: 'monospace', fontSize: '11px', color: '#5599ff',
+  c.add(scene.add.text(cx2, 244, 'P2  CHANGÓ', {
+    fontFamily: 'monospace', fontSize: '11px', color: '#5599ff', fontStyle: 'bold',
   }).setOrigin(0.5));
 
-  const startText = scene.add.text(W / 2, 360, 'PRESS START', {
-    fontFamily: 'monospace', fontSize: '26px', color: '#ffffff', fontStyle: 'bold',
-  }).setOrigin(0.5);
-  c.add(startText);
-  scene.tweens.add({
-    targets: startText, alpha: 0.15, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
-  });
+  // Opciones de Menú
+  scene.startMenuIdx = 0;
+  scene.startMenuTexts = [];
+  const menuY = 296;
+  for (let i = 0; i < MENU_ITEMS.length; i++) {
+    const txt = scene.add.text(W / 2, menuY + i * 36, '', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    scene.startMenuTexts.push(txt);
+    c.add(txt);
+  }
 
-  c.add(scene.add.text(W / 2, H - 28, 'P1: WASD mover   U saltar   I empujar     P2: Flechas mover   R saltar   T empujar', {
-    fontFamily: 'monospace', fontSize: '10px', color: '#444444',
+  // Indicaciones inferiores
+  c.add(scene.add.text(W / 2, H - 36, 'ARRIBA/ABAJO: ELEGIR MODO   |   START / BOTÓN 1: SELECCIONAR', {
+    fontFamily: 'monospace', fontSize: '11px', color: '#ffdd00', fontStyle: 'bold',
+  }).setOrigin(0.5));
+  c.add(scene.add.text(W / 2, H - 18, 'P1: WASD / U   ·   P2: Flechas / R', {
+    fontFamily: 'monospace', fontSize: '10px', color: '#555566',
   }).setOrigin(0.5));
 
   scene.startScreen = c;
+  renderStartMenu(scene);
+}
+
+function renderStartMenu(scene) {
+  for (let i = 0; i < MENU_ITEMS.length; i++) {
+    const isSelected = i === scene.startMenuIdx;
+    const txt = scene.startMenuTexts[i];
+    if (isSelected) {
+      txt.setText(`►  ${MENU_ITEMS[i]}  ◄`);
+      txt.setColor('#ffdd00');
+      txt.setFontSize(17);
+    } else {
+      txt.setText(`   ${MENU_ITEMS[i]}   `);
+      txt.setColor('#777799');
+      txt.setFontSize(14);
+    }
+  }
 }
 
 function showStartScreen(scene) {
   scene.phase = 'start';
-  scene.startScreen.setVisible(true);
+  if (scene.startScreen) scene.startScreen.setVisible(true);
+  if (scene.leaderboardScreen) scene.leaderboardScreen.setVisible(false);
+  if (scene.nameEntryScreen) scene.nameEntryScreen.setVisible(false);
+  if (scene.gameOverScreen) scene.gameOverScreen.setVisible(false);
+  renderStartMenu(scene);
 }
 
 function updateStartScreen(scene, time) {
+  // Navegación de menú
+  if (consumePressed('P1_U') || consumePressed('P2_U')) {
+    scene.startMenuIdx = (scene.startMenuIdx - 1 + MENU_ITEMS.length) % MENU_ITEMS.length;
+    renderStartMenu(scene);
+  }
+  if (consumePressed('P1_D') || consumePressed('P2_D')) {
+    scene.startMenuIdx = (scene.startMenuIdx + 1) % MENU_ITEMS.length;
+    renderStartMenu(scene);
+  }
+
+  // Selección
+  if (consumePressed('START1') || consumePressed('START2') || consumePressed('P1_1') || consumePressed('P2_1')) {
+    if (scene.startMenuIdx === 0) {
+      // 1 JUGADOR (VS CPU)
+      scene.gameState.gameMode = '1P';
+      scene.startScreen.setVisible(false);
+      startGame(scene);
+    } else if (scene.startMenuIdx === 1) {
+      // 2 JUGADORES (1 VS 1)
+      scene.gameState.gameMode = '2P';
+      scene.startScreen.setVisible(false);
+      startGame(scene);
+    } else if (scene.startMenuIdx === 2) {
+      // TABLA DE RÉCORDS
+      scene.startScreen.setVisible(false);
+      showLeaderboardScreen(scene);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Leaderboard View Screen (Acceso desde el menú principal)
+// ---------------------------------------------------------------------------
+function createLeaderboardScreen(scene) {
+  const c = scene.add.container(0, 0).setDepth(20);
+  c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x050512, 0.95));
+
+  const bgGfx = scene.add.graphics();
+  bgGfx.lineStyle(2, 0xffdd00, 0.8);
+  bgGfx.strokeRect(36, 20, W - 72, H - 40);
+  bgGfx.lineStyle(1, 0x00ccff, 0.5);
+  bgGfx.strokeRect(40, 24, W - 80, H - 48);
+  c.add(bgGfx);
+
+  c.add(scene.add.text(W / 2, 55, '★ TABLA DE RÉCORDS HISTÓRICOS ★', {
+    fontFamily: 'monospace', fontSize: '24px', color: '#ffdd00', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
+  }).setOrigin(0.5));
+  c.add(scene.add.text(W / 2, 90, 'BARRIO SAN ANTONIO · CALI', {
+    fontFamily: 'monospace', fontSize: '12px', color: '#8888aa',
+  }).setOrigin(0.5));
+
+  c.add(scene.add.text(W / 2, 138, 'POS   DUELO (P1 VS P2)        PUNTAJE    DISTANCIA', {
+    fontFamily: 'monospace', fontSize: '13px', color: '#00ffff', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  scene.lbViewRows = [];
+  const rankColors = ['#ffd700', '#e0e0e0', '#cd7f32', '#00ffff', '#ffff66'];
+  for (let i = 0; i < 5; i++) {
+    const row = scene.add.text(W / 2, 180 + i * 36, '', {
+      fontFamily: 'monospace', fontSize: '14px', color: rankColors[i], fontStyle: 'bold',
+    }).setOrigin(0.5);
+    scene.lbViewRows.push(row);
+    c.add(row);
+  }
+
+  const backPrompt = scene.add.text(W / 2, H - 50, 'PRESIONA START O BOTÓN 1 PARA VOLVER', {
+    fontFamily: 'monospace', fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
+  }).setOrigin(0.5);
+  c.add(backPrompt);
+  scene.tweens.add({
+    targets: backPrompt, alpha: 0.2, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+  });
+
+  scene.leaderboardScreen = c;
+  c.setVisible(false);
+}
+
+function showLeaderboardScreen(scene) {
+  scene.phase = 'leaderboard_view';
+  const lb = scene.gameState.leaderboard || DEFAULT_SCORES;
+  const rankLabels = ['1ST', '2ND', '3RD', '4TH', '5TH'];
+  for (let i = 0; i < 5; i++) {
+    const item = lb[i];
+    if (item && scene.lbViewRows[i]) {
+      const rank = rankLabels[i];
+      const match = (item.matchup || item.name || '---- VS ----').padEnd(19, ' ');
+      const sc = padScore(item.score);
+      const d = `${item.dist || 0}m`.padStart(8, ' ');
+      scene.lbViewRows[i].setText(`${rank}   ${match}  ${sc}   ${d}`);
+    }
+  }
+  scene.leaderboardScreen.setVisible(true);
+}
+
+function updateLeaderboardScreen(scene, time) {
+  if (consumePressed('START1') || consumePressed('START2') || consumePressed('P1_1') || consumePressed('P2_1')) {
+    scene.leaderboardScreen.setVisible(false);
+    showStartScreen(scene);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Name Entry Screen — 4 Iniciales por Jugador (P1 y P2)
+// ---------------------------------------------------------------------------
+const CHAR_SET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!- ';
+
+function createNameEntryScreen(scene) {
+  const c = scene.add.container(0, 0).setDepth(20);
+  c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x050512, 0.95));
+
+  const bgGfx = scene.add.graphics();
+  bgGfx.lineStyle(2, 0xffdd00, 0.8);
+  bgGfx.strokeRect(36, 20, W - 72, H - 40);
+  bgGfx.lineStyle(1, 0x00ccff, 0.5);
+  bgGfx.strokeRect(40, 24, W - 80, H - 48);
+  c.add(bgGfx);
+
+  scene.neTitle = scene.add.text(W / 2, 50, '¡FIN DE LA CARRERA!', {
+    fontFamily: 'monospace', fontSize: '26px', color: '#ffdd00', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
+  }).setOrigin(0.5);
+  c.add(scene.neTitle);
+
+  scene.neSub = scene.add.text(W / 2, 85, '', {
+    fontFamily: 'monospace', fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
+  }).setOrigin(0.5);
+  c.add(scene.neSub);
+
+  c.add(scene.add.text(W / 2, 120, 'REGISTREN SUS 4 INICIALES (P1 VS P2)', {
+    fontFamily: 'monospace', fontSize: '13px', color: '#00ffcc', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  // Cajas para las letras de P1
+  c.add(scene.add.text(W / 2 - 170, 160, 'JUGADOR 1 (NEA)', {
+    fontFamily: 'monospace', fontSize: '14px', color: '#ff4466', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  scene.p1LetterTexts = [];
+  for (let i = 0; i < 4; i++) {
+    const lt = scene.add.text(W / 2 - 230 + i * 40, 210, 'A', {
+      fontFamily: 'monospace', fontSize: '28px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
+    }).setOrigin(0.5);
+    scene.p1LetterTexts.push(lt);
+    c.add(lt);
+  }
+
+  // VS en el centro
+  c.add(scene.add.text(W / 2, 210, 'VS', {
+    fontFamily: 'monospace', fontSize: '24px', color: '#ffdd00', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  // Cajas para las letras de P2
+  scene.p2LabelText = scene.add.text(W / 2 + 170, 160, 'JUGADOR 2 (CHANGÓ)', {
+    fontFamily: 'monospace', fontSize: '14px', color: '#00ccff', fontStyle: 'bold',
+  }).setOrigin(0.5);
+  c.add(scene.p2LabelText);
+
+  scene.p2LetterTexts = [];
+  for (let i = 0; i < 4; i++) {
+    const lt = scene.add.text(W / 2 + 110 + i * 40, 210, 'A', {
+      fontFamily: 'monospace', fontSize: '28px', color: '#ffffff', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
+    }).setOrigin(0.5);
+    scene.p2LetterTexts.push(lt);
+    c.add(lt);
+  }
+
+  // Gráficos para los cursores de selección activa
+  scene.neCursorGfx = scene.add.graphics();
+  c.add(scene.neCursorGfx);
+
+  // Instrucciones
+  c.add(scene.add.text(W / 2, 280, 'P1: WASD cambiar letra / posición   |   P2: Flechas cambiar letra / posición', {
+    fontFamily: 'monospace', fontSize: '11px', color: '#aaaacc', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  const confirmPrompt = scene.add.text(W / 2, H - 45, 'PRESIONEN BOTÓN 1 O START PARA REGISTRAR EN EL SCOREBOARD', {
+    fontFamily: 'monospace', fontSize: '12px', color: '#ffdd00', fontStyle: 'bold',
+  }).setOrigin(0.5);
+  c.add(confirmPrompt);
+  scene.tweens.add({
+    targets: confirmPrompt, alpha: 0.25, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+  });
+
+  scene.nameEntryScreen = c;
+  c.setVisible(false);
+}
+
+function showNameEntry(scene, winnerLabel) {
+  scene.phase = 'name_entry';
+  scene.neWinnerLabel = winnerLabel;
+
+  const p1s = Math.round(scene.players.p1.score);
+  const p2s = Math.round(scene.players.p2.score);
+  const dist = Math.round(scene.gameState.distance);
+
+  let winText = '¡EMPATE!';
+  if (winnerLabel === 'P1') winText = '¡P1 (NEA) GANA!';
+  else if (winnerLabel === 'P2') winText = scene.gameState.gameMode === '1P' ? '¡CPU (CHANGÓ) GANA!' : '¡P2 (CHANGÓ) GANA!';
+  scene.neTitle.setText(winText);
+  scene.neSub.setText(`P1: ${padScore(p1s)} PTS   |   P2: ${padScore(p2s)} PTS   |   ${dist} METROS`);
+
+  // Iniciales por defecto
+  scene.nameEntry = {
+    p1Chars: ['N', 'E', 'A', '1'],
+    p1Idx: 0,
+    p2Chars: scene.gameState.gameMode === '1P' ? ['C', 'P', 'U', '1'] : ['C', 'H', 'G', 'O'],
+    p2Idx: 0,
+    p1Ready: false,
+    p2Ready: scene.gameState.gameMode === '1P',
+  };
+
+  if (scene.p2LabelText) {
+    scene.p2LabelText.setText(scene.gameState.gameMode === '1P' ? 'JUGADOR 2 (CPU)' : 'JUGADOR 2 (CHANGÓ)');
+  }
+
+  renderNameEntry(scene);
+  scene.nameEntryScreen.setVisible(true);
+}
+
+function renderNameEntry(scene) {
+  const ne = scene.nameEntry;
+  if (!ne) return;
+
+  // Render P1 letters
+  for (let i = 0; i < 4; i++) {
+    scene.p1LetterTexts[i].setText(ne.p1Chars[i]);
+    scene.p1LetterTexts[i].setColor(i === ne.p1Idx ? '#ffff00' : '#ff4466');
+  }
+
+  // Render P2 letters
+  for (let i = 0; i < 4; i++) {
+    scene.p2LetterTexts[i].setText(ne.p2Chars[i]);
+    scene.p2LetterTexts[i].setColor(i === ne.p2Idx ? '#ffff00' : '#00ccff');
+  }
+
+  // Dibujar cursores indicadores alrededor de la letra activa
+  const gfx = scene.neCursorGfx;
+  gfx.clear();
+
+  // Cursor P1
+  const p1X = W / 2 - 230 + ne.p1Idx * 40;
+  gfx.lineStyle(2, 0xff4466, 1);
+  gfx.strokeRect(p1X - 16, 192, 32, 36);
+  // Flechitas arriba y abajo
+  gfx.fillStyle(0xffffff, 0.8);
+  gfx.fillTriangle(p1X, 185, p1X - 6, 190, p1X + 6, 190);
+  gfx.fillTriangle(p1X, 235, p1X - 6, 230, p1X + 6, 230);
+
+  // Cursor P2 (si no es CPU)
+  if (scene.gameState.gameMode !== '1P') {
+    const p2X = W / 2 + 110 + ne.p2Idx * 40;
+    gfx.lineStyle(2, 0x00ccff, 1);
+    gfx.strokeRect(p2X - 16, 192, 32, 36);
+    gfx.fillTriangle(p2X, 185, p2X - 6, 190, p2X + 6, 190);
+    gfx.fillTriangle(p2X, 235, p2X - 6, 230, p2X + 6, 230);
+  }
+}
+
+function updateNameEntryScreen(scene, time) {
+  const ne = scene.nameEntry;
+  if (!ne) return;
+
+  // --- Controles Jugador 1 (P1) ---
+  if (consumePressed('P1_U')) {
+    let curIdx = CHAR_SET.indexOf(ne.p1Chars[ne.p1Idx]);
+    curIdx = (curIdx + 1) % CHAR_SET.length;
+    ne.p1Chars[ne.p1Idx] = CHAR_SET[curIdx];
+    renderNameEntry(scene);
+  }
+  if (consumePressed('P1_D')) {
+    let curIdx = CHAR_SET.indexOf(ne.p1Chars[ne.p1Idx]);
+    curIdx = (curIdx - 1 + CHAR_SET.length) % CHAR_SET.length;
+    ne.p1Chars[ne.p1Idx] = CHAR_SET[curIdx];
+    renderNameEntry(scene);
+  }
+  if (consumePressed('P1_L')) {
+    ne.p1Idx = (ne.p1Idx - 1 + 4) % 4;
+    renderNameEntry(scene);
+  }
+  if (consumePressed('P1_R')) {
+    ne.p1Idx = (ne.p1Idx + 1) % 4;
+    renderNameEntry(scene);
+  }
+  if (consumePressed('P1_1')) {
+    ne.p1Idx = (ne.p1Idx + 1) % 4;
+    renderNameEntry(scene);
+  }
+
+  // --- Controles Jugador 2 (P2) en modo 2P ---
+  if (scene.gameState.gameMode !== '1P') {
+    if (consumePressed('P2_U')) {
+      let curIdx = CHAR_SET.indexOf(ne.p2Chars[ne.p2Idx]);
+      curIdx = (curIdx + 1) % CHAR_SET.length;
+      ne.p2Chars[ne.p2Idx] = CHAR_SET[curIdx];
+      renderNameEntry(scene);
+    }
+    if (consumePressed('P2_D')) {
+      let curIdx = CHAR_SET.indexOf(ne.p2Chars[ne.p2Idx]);
+      curIdx = (curIdx - 1 + CHAR_SET.length) % CHAR_SET.length;
+      ne.p2Chars[ne.p2Idx] = CHAR_SET[curIdx];
+      renderNameEntry(scene);
+    }
+    if (consumePressed('P2_L')) {
+      ne.p2Idx = (ne.p2Idx - 1 + 4) % 4;
+      renderNameEntry(scene);
+    }
+    if (consumePressed('P2_R')) {
+      ne.p2Idx = (ne.p2Idx + 1) % 4;
+      renderNameEntry(scene);
+    }
+    if (consumePressed('P2_1')) {
+      ne.p2Idx = (ne.p2Idx + 1) % 4;
+      renderNameEntry(scene);
+    }
+  }
+
+  // Finalizar / Confirmar registro
   if (consumePressed('START1') || consumePressed('START2')) {
-    scene.startScreen.setVisible(false);
-    startGame(scene);
+    const p1Str = ne.p1Chars.join('');
+    const p2Str = ne.p2Chars.join('');
+    const matchup = `${p1Str} VS ${p2Str}`;
+
+    scene.nameEntryScreen.setVisible(false);
+    showGameOver(scene, scene.neWinnerLabel, matchup);
   }
 }
 
@@ -1335,7 +1829,6 @@ function createGameOverScreen(scene) {
   const c = scene.add.container(0, 0).setDepth(20);
   c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x050512, 0.95));
 
-  // Marco decorativo estilo gabinete arcade retro
   const bgGfx = scene.add.graphics();
   bgGfx.lineStyle(2, 0xffdd00, 0.8);
   bgGfx.strokeRect(36, 20, W - 72, H - 40);
@@ -1343,27 +1836,27 @@ function createGameOverScreen(scene) {
   bgGfx.strokeRect(40, 24, W - 80, H - 48);
   c.add(bgGfx);
 
-  scene.goTitle = scene.add.text(W / 2, 52, '', {
-    fontFamily: 'monospace', fontSize: '28px', color: '#ffdd00', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
+  scene.goTitle = scene.add.text(W / 2, 48, '', {
+    fontFamily: 'monospace', fontSize: '26px', color: '#ffdd00', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
   }).setOrigin(0.5);
   c.add(scene.goTitle);
 
-  scene.goScores = scene.add.text(W / 2, 88, '', {
+  scene.goScores = scene.add.text(W / 2, 80, '', {
     fontFamily: 'monospace', fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
   }).setOrigin(0.5);
   c.add(scene.goScores);
 
-  scene.goBanner = scene.add.text(W / 2, 116, '', {
+  scene.goBanner = scene.add.text(W / 2, 108, '', {
     fontFamily: 'monospace', fontSize: '13px', color: '#ff44aa', fontStyle: 'bold',
   }).setOrigin(0.5);
   c.add(scene.goBanner);
 
   // Título de la tabla de récords
-  c.add(scene.add.text(W / 2, 150, '★ TABLA DE RÉCORDS · TOP 5 ★', {
+  c.add(scene.add.text(W / 2, 142, '★ TABLA DE RÉCORDS (TOP 5) ★', {
     fontFamily: 'monospace', fontSize: '15px', color: '#00ffcc', fontStyle: 'bold',
   }).setOrigin(0.5));
 
-  c.add(scene.add.text(W / 2, 180, 'POS   JUGADOR    PUNTAJE    DISTANCIA', {
+  c.add(scene.add.text(W / 2, 172, 'POS   DUELO (P1 VS P2)        PUNTAJE    DISTANCIA', {
     fontFamily: 'monospace', fontSize: '12px', color: '#8888aa', fontStyle: 'bold',
   }).setOrigin(0.5));
 
@@ -1371,15 +1864,15 @@ function createGameOverScreen(scene) {
   scene.goScoreRows = [];
   const rankColors = ['#ffd700', '#e0e0e0', '#cd7f32', '#00ffff', '#ffff66'];
   for (let i = 0; i < 5; i++) {
-    const row = scene.add.text(W / 2, 212 + i * 32, '', {
+    const row = scene.add.text(W / 2, 204 + i * 32, '', {
       fontFamily: 'monospace', fontSize: '14px', color: rankColors[i], fontStyle: 'bold',
     }).setOrigin(0.5);
     scene.goScoreRows.push(row);
     c.add(row);
   }
 
-  const restartPrompt = scene.add.text(W / 2, H - 42, 'PRESS START TO RACE AGAIN', {
-    fontFamily: 'monospace', fontSize: '15px', color: '#ffffff', fontStyle: 'bold',
+  const restartPrompt = scene.add.text(W / 2, H - 42, 'PRESIONA START PARA VOLVER AL MENÚ', {
+    fontFamily: 'monospace', fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
   }).setOrigin(0.5);
   c.add(restartPrompt);
   scene.tweens.add({
@@ -1390,27 +1883,28 @@ function createGameOverScreen(scene) {
   c.setVisible(false);
 }
 
-async function showGameOver(scene, winnerLabel) {
+async function showGameOver(scene, winnerLabel, matchup) {
   scene.phase = 'gameover';
   const p1s = Math.round(scene.players.p1.score);
   const p2s = Math.round(scene.players.p2.score);
   const dist = Math.round(scene.gameState.distance);
 
-  let winText = 'NOBODY WINS!';
-  if (winnerLabel === 'P1') winText = 'P1 (NEA) WINS!';
-  else if (winnerLabel === 'P2') winText = 'P2 (CHANGÓ) WINS!';
+  let winText = '¡EMPATE!';
+  if (winnerLabel === 'P1') winText = '¡P1 (NEA) GANA!';
+  else if (winnerLabel === 'P2') winText = scene.gameState.gameMode === '1P' ? '¡CPU (CHANGÓ) GANA!' : '¡P2 (CHANGÓ) GANA!';
   scene.goTitle.setText(winText);
 
   scene.goScores.setText(`P1: ${padScore(p1s)} PTS  |  P2: ${padScore(p2s)} PTS  |  ${dist} METROS`);
 
-  // Actualizar tabla persistente de récords
-  const res = await recordHighScore(scene, p1s, p2s, dist);
+  // Actualizar tabla persistente de récords con el formato P1 VS P2
+  const finalMatchup = matchup || 'NEAA VS CHGO';
+  const res = await recordHighScore(scene, finalMatchup, p1s, p2s, dist);
 
   if (res.isNewHigh) {
-    scene.goBanner.setText('🎉 ¡NUEVO RÉCORD REGISTRADO EN EL SCOREBOARD! 🎉');
+    scene.goBanner.setText(`🎉 ¡NUEVO RÉCORD REGISTRADO: ${finalMatchup}! 🎉`);
     scene.goBanner.setColor('#ff3399');
   } else {
-    scene.goBanner.setText('MEJORES MARCAS EN SAN ANTONIO');
+    scene.goBanner.setText(`DUELO REGISTRADO: ${finalMatchup}`);
     scene.goBanner.setColor('#8888bb');
   }
 
@@ -1419,10 +1913,10 @@ async function showGameOver(scene, winnerLabel) {
     const item = res.leaderboard[i];
     if (item && scene.goScoreRows[i]) {
       const rank = rankLabels[i];
-      const name = (item.name || '---').padEnd(10, ' ');
+      const match = (item.matchup || item.name || '---- VS ----').padEnd(19, ' ');
       const sc = padScore(item.score);
       const d = `${item.dist || 0}m`.padStart(8, ' ');
-      scene.goScoreRows[i].setText(`${rank}   ${name} ${sc}   ${d}`);
+      scene.goScoreRows[i].setText(`${rank}   ${match}  ${sc}   ${d}`);
     }
   }
 
@@ -1430,10 +1924,10 @@ async function showGameOver(scene, winnerLabel) {
 }
 
 function updateGameOverScreen(scene, time) {
-  if (consumePressed('START1') || consumePressed('START2')) {
+  if (consumePressed('START1') || consumePressed('START2') || consumePressed('P1_1') || consumePressed('P2_1')) {
     scene.gameOverScreen.setVisible(false);
     resetGame(scene);
-    startGame(scene);
+    showStartScreen(scene);
   }
 }
 
@@ -1479,6 +1973,7 @@ function resetGame(scene) {
   scene.gameState.speed = 0;
   scene.gameState.distance = 0;
   scene.gameState.spawnTimer = 1.2;
+  resetParticles(scene);
 }
 
 function pauseGame(scene) {
@@ -1524,8 +2019,16 @@ function updatePlayers(scene, delta, time) {
   const { p1, p2 } = scene.players;
 
   handlePlayerInput(scene, p1, 'P1', dt);
-  handlePlayerInput(scene, p2, 'P2', dt);
+  if (scene.gameState.gameMode === '1P') {
+    updateCpuPlayer(scene, p2, dt, time);
+  } else {
+    handlePlayerInput(scene, p2, 'P2', dt);
+  }
   resolvePlayerCollision(scene, p1, p2);
+
+  // Emisión de partículas de fricción y chispas al deslizarse sobre el asfalto
+  emitSlideParticles(scene, p1, scene.gameState.speed, dt);
+  emitSlideParticles(scene, p2, scene.gameState.speed, dt);
 
   // Pierde el jugador que caiga demasiado atrás (prog-based = justo para ambos)
   for (const player of [p1, p2]) {
@@ -1536,6 +2039,96 @@ function updatePlayers(scene, delta, time) {
   }
 
   renderPlayers(scene, time, scene.gameState.speed);
+}
+
+function updateCpuPlayer(scene, cpu, dt, time) {
+  if (!cpu.alive) return;
+
+  if (cpu.paralyzed > 0) {
+    cpu.paralyzed = Math.max(0, cpu.paralyzed - dt);
+    if (cpu.knockbackVel > 0) {
+      cpu.prog -= cpu.knockbackVel * dt;
+      if (cpu.paralyzed <= 0) cpu.knockbackVel = 0;
+    }
+    return;
+  }
+
+  const latSpeed = 200;
+
+  // Busca el obstáculo más cercano por delante
+  let closestOb = null;
+  let minDist = 9999;
+  for (const ob of scene.obstacles) {
+    const distToCpu = ob.x - cpu.x;
+    if (distToCpu > -25 && distToCpu < minDist) {
+      minDist = distToCpu;
+      closestOb = ob;
+    }
+  }
+
+  let targetLat = cpu.lat;
+  let wantsJump = false;
+
+  if (closestOb && minDist < 220) {
+    if (closestOb.type === 'rail') {
+      targetLat = closestOb.lat; // Guiar hacia el puente
+    } else {
+      const inHazard = Math.abs(cpu.lat - closestOb.lat) < 32;
+      if (inHazard) {
+        if (minDist < 90) wantsJump = true;
+        else targetLat = closestOb.lat > 0 ? (closestOb.lat - 38) : (closestOb.lat + 38);
+      }
+    }
+  } else {
+    // Si no hay peligro inminente, fluctuación natural
+    targetLat = -35 + Math.sin(time * 0.002) * 20;
+  }
+
+  const diffLat = targetLat - cpu.lat;
+  if (Math.abs(diffLat) > 3) {
+    const dLat = diffLat > 0 ? 1 : -1;
+    cpu.lat = Phaser.Math.Clamp(cpu.lat + dLat * latSpeed * dt, -85, 85);
+  }
+
+  // Convertir lat + prog a pantalla
+  const baseX = W / 2;
+  const baseY = baseX * 0.5 + 225;
+  cpu.x = baseX + cpu.lat * (-2) + cpu.prog * 1;
+  cpu.y = baseY + cpu.lat * 1 + cpu.prog * 0.5;
+
+  // Salto de la CPU
+  if (wantsJump && !cpu.jumping) {
+    cpu.jumping = true;
+    cpu.jumpLanding = false;
+    cpu.jumpTimer = 0;
+    cpu.landTimer = 0;
+    cpu.landStartZ = 1.0;
+  }
+
+  if (cpu.jumping) {
+    if (!cpu.jumpLanding) {
+      cpu.jumpTimer += dt;
+      if (cpu.jumpTimer < 0.10) {
+        cpu.jumpZ = Math.sin((cpu.jumpTimer / 0.10) * (Math.PI / 2));
+      } else {
+        cpu.jumpZ = 1.0;
+      }
+      if (cpu.jumpTimer >= 0.6) {
+        cpu.jumpLanding = true;
+        cpu.landTimer = 0;
+        cpu.landStartZ = cpu.jumpZ;
+      }
+    } else {
+      cpu.landTimer += dt;
+      if (cpu.landTimer >= 0.14) {
+        cpu.jumping = false;
+        cpu.jumpLanding = false;
+        cpu.jumpZ = 0;
+      } else {
+        cpu.jumpZ = cpu.landStartZ * Math.cos((cpu.landTimer / 0.14) * (Math.PI / 2));
+      }
+    }
+  }
 }
 
 // Rango de movimiento voluntario adelante/atrás (el empujón de un obstáculo
@@ -1705,9 +2298,9 @@ function checkPlayerElimination(scene) {
   const p1Dead = !p1.alive && p2.alive;
   const p2Dead = p1.alive && !p2.alive;
 
-  if (bothDead) { showGameOver(scene, 'NOBODY'); return; }
-  if (p1Dead)  { showGameOver(scene, 'P2'); return; }
-  if (p2Dead)  { showGameOver(scene, 'P1'); return; }
+  if (bothDead) { showNameEntry(scene, 'NOBODY'); return; }
+  if (p1Dead)  { showNameEntry(scene, 'P2'); return; }
+  if (p2Dead)  { showNameEntry(scene, 'P1'); return; }
 }
 
 // ---------------------------------------------------------------------------
