@@ -208,7 +208,7 @@ function renderPlayers(scene) {
   gfx.clear();
   const { p1, p2 } = scene.players;
   if (p1.alive) { drawBeerCrate(gfx, p1.x, p1.y, 3); drawNea(gfx, p1.x, p1.y, 3); }
-  if (p2.alive) drawBeerCrate(gfx, p2.x, p2.y, 3);  // Diablito: TBD
+  if (p2.alive) { drawBeerCrate(gfx, p2.x, p2.y, 3); drawChango(gfx, p2.x, p2.y, 3); }
 }
 
 // ---------------------------------------------------------------------------
@@ -259,13 +259,14 @@ function createStartScreen(scene) {
   const cx2 = W / 2 + 72;
   drawBeerCrate(previewGfx, cx1, crateY, 4);
   drawNea(previewGfx, cx1, crateY, 4);           // P1 = Nea
-  drawBeerCrate(previewGfx, cx2, crateY, 4);      // P2 = Diablito (TBD)
+  drawBeerCrate(previewGfx, cx2, crateY, 4);
+  drawChango(previewGfx, cx2, crateY, 4);          // P2 = Changó
   c.add(previewGfx);
 
   c.add(scene.add.text(cx1, 320, 'P1  NEA', {
     fontFamily: 'monospace', fontSize: '11px', color: '#ff5555',
   }).setOrigin(0.5));
-  c.add(scene.add.text(cx2, 320, 'P2  ???', {
+  c.add(scene.add.text(cx2, 320, 'P2  CHANGO', {
     fontFamily: 'monospace', fontSize: '11px', color: '#5599ff',
   }).setOrigin(0.5));
 
@@ -579,6 +580,137 @@ function drawNea(gfx, cx, cy, scale) {
   gfx.fillStyle(0xffcc00, 1);
   gfx.fillRect(earX - r(0.5), earY,            r(1.1), r(0.3));
   gfx.fillRect(earX - r(0.15), earY - r(0.45), r(0.35), r(1.1));
+}
+
+// ---------------------------------------------------------------------------
+// Changó — P2 character (diablo caleño, perfil izquierdo mirando derecha)
+//
+// Rojo con cuernos, cola pica, cinturón negro/dorado, bota negra, colmillo.
+// Cola flota hacia atrás (izquierda) por la velocidad del descenso.
+//
+// cx, cy = mismo anchor que drawBeerCrate (centro de la cara frontal)
+// ---------------------------------------------------------------------------
+function drawChango(gfx, cx, cy, scale) {
+  const base = scale || 3;
+  const s = base * 1.15;                          // 15% más grande que Nea
+  const r = (v) => Math.round(v * s);
+  const baseY = cy - Math.round(3.5 * base);      // anchor fijo al tope de la canasta
+  const bx = cx;
+
+  // ── COLA (flota hacia atrás/arriba por la velocidad — izquierda)
+  gfx.fillStyle(0xcc2222, 1);
+  gfx.fillRect(bx - r(2.5), baseY - r(3.2), r(0.9), r(1.8));   // raíz en espalda baja
+  gfx.fillRect(bx - r(3.8), baseY - r(4.8), r(1.5), r(0.8));   // codo hacia izq
+  gfx.fillRect(bx - r(4.3), baseY - r(6.8), r(0.8), r(2.2));   // sube
+  // Punta de pica
+  gfx.fillStyle(0x880000, 1);
+  gfx.fillTriangle(
+    bx - r(4.9), baseY - r(6.8),
+    bx - r(3.5), baseY - r(6.8),
+    bx - r(4.2), baseY - r(8.8),
+  );
+  gfx.fillRect(bx - r(5.1), baseY - r(7.4), r(0.9), r(0.8));   // oreja izq pica
+  gfx.fillRect(bx - r(3.5), baseY - r(7.4), r(0.9), r(0.8));   // oreja der pica
+
+  // ── BOTA NEGRA (apunta derecha)
+  gfx.fillStyle(0x111111, 1);
+  gfx.fillRect(bx + r(1.3), baseY + r(1.4), r(4.2), r(1.8));   // bota
+  gfx.fillRect(bx + r(1.0), baseY + r(3.0), r(4.5), r(0.5));   // suela
+
+  // ── PIERNA (roja, perfil)
+  gfx.fillStyle(0xcc2222, 1);
+  gfx.fillRect(bx + r(2.5), baseY + r(0.2), r(2.2), r(1.5));   // pantorrilla
+  gfx.fillRect(bx,          baseY - r(0.5), r(4),   r(1.2));   // muslo →der
+
+  // ── PANTALÓN NEGRO
+  gfx.fillStyle(0x111111, 1);
+  gfx.fillRect(bx - r(2.5), baseY - r(2.5), r(4.2), r(2.5));
+
+  // ── CINTURÓN NEGRO con hebilla dorada
+  gfx.fillStyle(0x000000, 1);
+  gfx.fillRect(bx - r(2.7), baseY - r(3.2), r(4.2), r(0.9));
+  gfx.fillStyle(0xddaa00, 1);
+  gfx.fillRect(bx - r(0.55), baseY - r(3.15), r(1.1), r(0.75));
+  gfx.fillStyle(0x000000, 1);
+  gfx.fillRect(bx - r(0.2), baseY - r(3.0), r(0.4), r(0.5));   // slot
+
+  // ── BRAZO IZQUIERDO (apoyado hacia adelante-derecha sobre canasta)
+  gfx.fillStyle(0xcc2222, 1);
+  gfx.fillRect(bx,          baseY - r(6.5), r(1.5), r(1.5));   // hombro
+  gfx.fillRect(bx + r(1.4), baseY - r(6.3), r(2.8), r(1.3));   // brazo →der
+  gfx.fillRect(bx + r(3.7), baseY - r(6.3), r(1.3), r(3.5));   // antebrazo abajo
+  gfx.fillStyle(0xbb1111, 1);
+  gfx.fillRect(bx + r(3.3), baseY - r(3.0), r(2.0), r(1.5));   // puño
+
+  // ── TORSO ROJO
+  gfx.fillStyle(0xcc2222, 1);
+  gfx.fillRect(bx - r(2.7), baseY - r(6.8), r(4.2), r(4.5));
+  gfx.fillStyle(0xaa1111, 1);
+  gfx.fillRect(bx + r(0.7), baseY - r(6.8), r(0.8), r(4.5));   // borde frontal oscuro
+  gfx.fillStyle(0xdd3333, 1);
+  gfx.fillRect(bx - r(2.0), baseY - r(6.5), r(2.0), r(1.5));   // músculo pecho
+
+  // ── CUELLO
+  gfx.fillStyle(0xcc2222, 1);
+  gfx.fillRect(bx - r(2.1), baseY - r(8.2), r(1.6), r(1.8));
+
+  // ── CABEZA
+  const headX = bx - r(1.3);
+  const headY = baseY - r(10.4);
+
+  // CUERNO TRASERO (izquierda = atrás) — detrás de la cabeza
+  gfx.fillStyle(0x880000, 1);
+  gfx.fillRect(headX + r(0.6), headY - r(4.0), r(1.6), r(2.2));
+  gfx.fillTriangle(
+    headX + r(0.6), headY - r(4.0),
+    headX + r(2.2), headY - r(4.0),
+    headX + r(1.4), headY - r(7.2),
+  );
+
+  // CABEZA (círculo rojo)
+  gfx.fillStyle(0xcc2222, 1);
+  gfx.fillCircle(headX, headY, r(2.3));
+
+  // CUERNO DELANTERO (encima de la cabeza, más prominente)
+  gfx.fillStyle(0xaa1111, 1);
+  gfx.fillRect(headX - r(0.9), headY - r(3.8), r(1.8), r(2.0));
+  gfx.fillStyle(0x880000, 1);
+  gfx.fillTriangle(
+    headX - r(0.9), headY - r(3.8),
+    headX + r(0.9), headY - r(3.8),
+    headX,          headY - r(7.0),
+  );
+
+  // OREJA PUNTIAGUDA (izquierda — visible en perfil izquierdo)
+  gfx.fillStyle(0xbb1111, 1);
+  gfx.fillTriangle(
+    headX - r(2.0), headY - r(0.5),
+    headX - r(4.2), headY - r(3.0),
+    headX - r(2.0), headY - r(1.8),
+  );
+
+  // OJO AMARILLO (perfil, uno visible)
+  gfx.fillStyle(0xffcc00, 1);
+  gfx.fillRect(headX + r(0.2), headY - r(0.6), r(1.5), r(1.0));
+  gfx.fillStyle(0x000000, 1);
+  gfx.fillRect(headX + r(0.7), headY - r(0.6), r(0.5), r(1.0));  // pupila vertical
+
+  // CEJA FRUNCIDA (angry)
+  gfx.fillStyle(0x660000, 1);
+  gfx.fillRect(headX - r(0.2), headY - r(1.7), r(2.0), r(0.5));
+  gfx.fillRect(headX + r(1.6), headY - r(2.2), r(0.5), r(0.8));  // inner raised
+
+  // NARIZ (apunta derecha — perfil)
+  gfx.fillStyle(0xaa1111, 1);
+  gfx.fillTriangle(
+    headX + r(1.9), headY + r(0.2),
+    headX + r(3.2), headY + r(0.8),
+    headX + r(1.9), headY + r(1.4),
+  );
+
+  // COLMILLO BLANCO
+  gfx.fillStyle(0xffffff, 1);
+  gfx.fillRect(headX + r(1.3), headY + r(1.4), r(0.6), r(1.2));
 }
 
 // ---------------------------------------------------------------------------
