@@ -108,6 +108,7 @@ function create() {
   scene.gameState = {
     speed: 0,         // current scroll speed (px/s)
     distance: 0,      // total distance scrolled
+    elapsed: 0,       // tiempo transcurrido (segundos)
     musicStarted: false,
   };
 
@@ -211,6 +212,23 @@ const LAT_MIN = -85;
 const LAT_MAX = 85;
 const COLLISION_X = 400;      // "Línea del ahora": donde vive el jugador en X
 
+// ---------------------------------------------------------------------------
+// Difficulty phases — dificultad incremental por tiempo
+// ---------------------------------------------------------------------------
+function getDiffPhase(elapsed) {
+  if (elapsed < 20) return 0;  // Fácil
+  if (elapsed < 60) return 1;  // Medio
+  if (elapsed < 120) return 2; // Difícil
+  return 3;                    // Muy difícil
+}
+
+const DIFF_SETTINGS = [
+  { speedMax: 300, accel: 6,  spawnMin: 2.0, spawnMax: 3.0 },  // Fácil (0–20s)
+  { speedMax: 500, accel: 10, spawnMin: 1.2, spawnMax: 2.0 },  // Medio (20s–60s)
+  { speedMax: 700, accel: 14, spawnMin: 0.7, spawnMax: 1.3 },  // Difícil (60s–120s)
+  { speedMax: 900, accel: 20, spawnMin: 0.4, spawnMax: 0.8 },  // Muy difícil (>120s)
+];
+
 const trackCurbY  = (x) => x * TRACK_M + CURB_OFFSET;
 const trackCliffY = (x) => x * TRACK_M + CLIFF_OFFSET;
 
@@ -291,6 +309,7 @@ function createPlayers(scene) {
       jumping: false, jumpCharging: false, jumpHeld: 0, jumpElapsed: 0, jumpDuration: 0, jumpZ: 0,
       pushing: false,
       paralyzed: 0,
+      knockbackVel: 0,
       alive: true,
       label: 'P1',
     },
@@ -301,6 +320,7 @@ function createPlayers(scene) {
       jumping: false, jumpCharging: false, jumpHeld: 0, jumpElapsed: 0, jumpDuration: 0, jumpZ: 0,
       pushing: false,
       paralyzed: 0,
+      knockbackVel: 0,
       alive: true,
       label: 'P2',
     },
@@ -476,9 +496,9 @@ function drawRustyRailObstacle(gfx, cx, cy, scale, length) {
 // hazardRadius: mitad del ancho lateral que ocupa el peligro (en unidades de "lat")
 // railGap: [min,max] de lat que SÍ es seguro pasar (pegado a la baranda) — el resto cae al vacío
 const OBSTACLE_DEF = {
-  hole:  { hazardRadius: 16, scale: 1.1 },
-  drunk: { hazardRadius: 26, scale: 1.5 },
-  rail:  { railSafeMin: 55, railSafeMax: 85, scale: 1 }, // franja segura pegada al barranco
+  hole:  { hazardRadius: 16, hitRadius: 30, scale: 1.1 },
+  drunk: { hazardRadius: 26, hitRadius: 42, scale: 1.5 },
+  rail:  { railSafeMin: 55, railSafeMax: 85, hitRadius: 28, scale: 1 },
 };
 
 const SPAWN_X = W + 90; // aparecen fuera de pantalla, a la derecha
@@ -491,15 +511,11 @@ function createObstaclePool(scene) {
 }
 
 function spawnObstacle(scene) {
-  const roll = Math.random();
-  let type = 'hole';
-  if (roll < 0.34) type = 'hole';
-  else if (roll < 0.68) type = 'drunk';
-  else type = 'rail';
+  const phase = getDiffPhase(scene.gameState.elapsed);
+  const type = rollObstacleType(phase);
 
   let lat;
   if (type === 'rail') {
-    // La baranda siempre está pegada al lado del barranco (lat positivo)
     lat = Phaser.Math.Between(60, 80);
   } else {
     lat = Phaser.Math.Between(LAT_MIN + 10, LAT_MAX - 10);
@@ -508,10 +524,17 @@ function spawnObstacle(scene) {
   scene.obstacles.push({
     type, lat,
     x: SPAWN_X,
-    prevX: SPAWN_X,
-    resolvedP1: false, // ya se evaluó el cruce para cada jugador (cada uno tiene su propia línea, según su 'prog')
+    resolvedP1: false,
     resolvedP2: false,
   });
+}
+
+function rollObstacleType(phase) {
+  const r = Math.random();
+  if (phase === 0) return r < 0.75 ? 'hole' : r < 0.92 ? 'drunk' : 'rail';
+  if (phase === 1) return r < 0.40 ? 'hole' : r < 0.75 ? 'drunk' : 'rail';
+  if (phase === 2) return r < 0.25 ? 'hole' : r < 0.60 ? 'drunk' : 'rail';
+  return r < 0.20 ? 'hole' : r < 0.55 ? 'drunk' : 'rail';
 }
 
 function updateObstacles(scene, delta) {
@@ -519,27 +542,24 @@ function updateObstacles(scene, delta) {
   const { p1, p2 } = scene.players;
   const gfx = scene.obstacleGraphics;
 
-  // Spawnea nuevos obstáculos; el ritmo se acelera con la velocidad
+  // Spawn rate controlado por fase de dificultad
+  const phase = getDiffPhase(scene.gameState.elapsed);
+  const ds = DIFF_SETTINGS[phase];
   scene.gameState.spawnTimer -= dt;
   if (scene.gameState.spawnTimer <= 0) {
     spawnObstacle(scene);
-    const speedFactor = Phaser.Math.Clamp(scene.gameState.speed / 900, 0, 1);
-    const gapMax = Phaser.Math.Linear(2.2, 0.9, speedFactor);
-    const gapMin = Phaser.Math.Linear(1.1, 0.5, speedFactor);
-    scene.gameState.spawnTimer = Phaser.Math.FloatBetween(gapMin, gapMax);
+    scene.gameState.spawnTimer = Phaser.Math.FloatBetween(ds.spawnMin, ds.spawnMax);
   }
 
   gfx.clear();
 
   for (let i = scene.obstacles.length - 1; i >= 0; i--) {
     const ob = scene.obstacles[i];
-    ob.prevX = ob.x;
     ob.x -= scene.gameState.speed * dt;
 
-    // Resolución del choque: se evalúa una sola vez por jugador, al cruzar
-    // SU propia línea del "ahora" (la línea base desplazada por su 'prog').
-    checkObstacleCrossing(scene, ob, p1, 'resolvedP1');
-    checkObstacleCrossing(scene, ob, p2, 'resolvedP2');
+    // Colisión por proximidad en pantalla (no por cruce de línea abstracta)
+    checkObstacleProximity(scene, ob, p1, 'resolvedP1');
+    checkObstacleProximity(scene, ob, p2, 'resolvedP2');
 
     const y = laneY(ob.x, ob.lat);
     const def = OBSTACLE_DEF[ob.type];
@@ -551,12 +571,27 @@ function updateObstacles(scene, delta) {
   }
 }
 
-function checkObstacleCrossing(scene, ob, player, flagKey) {
-  if (ob[flagKey]) return;
-  const line = COLLISION_X + player.prog; // adelantarse o rezagarse mueve tu propia línea de choque
-  if (ob.prevX >= line && ob.x < line) {
-    ob[flagKey] = true;
-    resolveObstacleHit(scene, ob, player);
+function checkObstacleProximity(scene, ob, player, flagKey) {
+  if (ob[flagKey] || !player.alive) return;
+
+  const def = OBSTACLE_DEF[ob.type];
+  const obY = laneY(ob.x, ob.lat);
+
+  if (ob.type === 'rail') {
+    // La baranda usa proximidad en X + chequeo de zona lateral
+    if (Math.abs(ob.x - player.x) < def.hitRadius) {
+      ob[flagKey] = true;
+      resolveObstacleHit(scene, ob, player);
+    }
+  } else {
+    // Huecos y borrachos: distancia real en pantalla
+    const dx = ob.x - player.x;
+    const dy = obY - player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < def.hitRadius) {
+      ob[flagKey] = true;
+      resolveObstacleHit(scene, ob, player);
+    }
   }
 }
 
@@ -580,11 +615,11 @@ function resolveObstacleHit(scene, obstacle, player) {
   applyKnockback(scene, player);
 }
 
-// Un obstáculo fallado NO es game over: te manda hacia atrás y te paraliza
-// un instante. Sólo perdés si te quedan empujando tanto que salís de pantalla.
+// Un obstáculo fallado NO es game over: te paraliza y te empuja hacia atrás
+// gradualmente. Sólo perdés si salís de pantalla por el borde trasero.
 function applyKnockback(scene, player) {
-  player.prog -= PROG_KNOCKBACK;
   player.paralyzed = PARALYZE_DURATION;
+  player.knockbackVel = PROG_KNOCKBACK / PARALYZE_DURATION; // retroceso suave
   player.jumping = false;
   player.jumpCharging = false;
   player.jumpZ = 0;
@@ -704,6 +739,7 @@ function startGame(scene) {
   scene.phase = 'playing';
   scene.gameState.speed = 200;
   scene.gameState.distance = 0;
+  scene.gameState.elapsed = 0;
   scene.gameState.spawnTimer = 1.2;
   scene.obstacles = [];
   if (scene.obstacleGraphics) scene.obstacleGraphics.clear();
@@ -719,6 +755,7 @@ function startGame(scene) {
     player.jumpZ = 0;
     player.prog = 0;
     player.paralyzed = 0;
+    player.knockbackVel = 0;
   }
   scene.players.p1.x = W / 2 - 80;
   scene.players.p2.x = W / 2 + 80;
@@ -750,8 +787,14 @@ function resumeGame(scene) {
 // ---------------------------------------------------------------------------
 function updateScroll(scene, delta) {
   const dt = delta / 1000;
-  // Acelera progresivamente el mapa
-  scene.gameState.speed = Math.min(scene.gameState.speed + 8 * dt, 900);
+  scene.gameState.elapsed += dt;
+
+  // Dificultad incremental por tiempo
+  const phase = getDiffPhase(scene.gameState.elapsed);
+  const ds = DIFF_SETTINGS[phase];
+
+  // Acelera según la fase actual
+  scene.gameState.speed = Math.min(scene.gameState.speed + ds.accel * dt, ds.speedMax);
   
   // Aumenta la distancia global
   scene.gameState.distance += scene.gameState.speed * dt;
@@ -770,10 +813,9 @@ function updatePlayers(scene, delta, time) {
   handlePlayerInput(scene, p2, 'P2', dt);
   resolvePlayerCollision(scene, p1, p2);
 
-  // Si el rezago (empujones acumulados hacia atrás) es demasiado, el jugador
-  // queda fuera de pantalla por arriba y pierde — sin necesidad de un solo golpe fatal.
+  // Pierde el jugador cuyo sprite salga del borde trasero de la pantalla
   for (const player of [p1, p2]) {
-    if (player.alive && player.prog < PROG_ELIMINATE) {
+    if (player.alive && player.x < -20) {
       player.alive = false;
       player.eliminatedBy = 'trail';
     }
@@ -787,14 +829,19 @@ function updatePlayers(scene, delta, time) {
 const PROG_MOVE_MIN = -60;
 const PROG_MOVE_MAX = 60;
 const PROG_KNOCKBACK = 50;     // cuánto te manda hacia atrás un obstáculo fallado
-const PROG_ELIMINATE = -170;   // más atrás que esto = salís de pantalla, perdés
-const PARALYZE_DURATION = 0.5; // segundos paralizado tras un golpe
+const PROG_ELIMINATE = -170;   // fallback de seguridad (la condición real es salir de pantalla)
+const PARALYZE_DURATION = 0.7; // segundos paralizado tras un golpe (el knockback se aplica gradualmente)
 
 function handlePlayerInput(scene, player, prefix, dt) {
   if (!player.alive) return;
 
   if (player.paralyzed > 0) {
     player.paralyzed = Math.max(0, player.paralyzed - dt);
+    // Retroceso suave durante la parálisis
+    if (player.knockbackVel > 0) {
+      player.prog -= player.knockbackVel * dt;
+      if (player.paralyzed <= 0) player.knockbackVel = 0;
+    }
   }
 
   const latSpeed = 220;  // Velocidad de esquive lateral
@@ -877,19 +924,28 @@ function isClearingJump(player, obstacleType) {
 }
 
 function resolvePlayerCollision(scene, p1, p2) {
-  // Las colisiones se resuelven en el eje lateral, como antes — el nuevo eje
-  // de avance/retroceso no bloquea entre jugadores, sólo el lateral.
-  const minLatDist = 40; // Ancho lateral de la canasta
-  const diff = p1.lat - p2.lat;
-  
-  if (Math.abs(diff) < minLatDist) {
-    const push = (minLatDist - Math.abs(diff)) / 2;
-    if (diff > 0) { p1.lat += push; p2.lat -= push; }
-    else { p1.lat -= push; p2.lat += push; }
-    
-    // Asegurar que un choque no los empuje fuera del puente
-    p1.lat = Phaser.Math.Clamp(p1.lat, -85, 85);
-    p2.lat = Phaser.Math.Clamp(p2.lat, -85, 85);
+  if (!p1.alive || !p2.alive) return;
+  const minLat = 35;  // tamaño lateral de la canasta
+  const minProg = 40; // tamaño adelante/atrás
+
+  const dLat  = p1.lat  - p2.lat;
+  const dProg = p1.prog - p2.prog;
+  const oLat  = minLat  - Math.abs(dLat);
+  const oProg = minProg - Math.abs(dProg);
+
+  if (oLat > 0 && oProg > 0) {
+    // Separar por el eje con menor penetración
+    if (oLat < oProg) {
+      const push = oLat / 2;
+      if (dLat > 0) { p1.lat += push; p2.lat -= push; }
+      else          { p1.lat -= push; p2.lat += push; }
+    } else {
+      const push = oProg / 2;
+      if (dProg > 0) { p1.prog += push; p2.prog -= push; }
+      else           { p1.prog -= push; p2.prog += push; }
+    }
+    p1.lat = Phaser.Math.Clamp(p1.lat, LAT_MIN, LAT_MAX);
+    p2.lat = Phaser.Math.Clamp(p2.lat, LAT_MIN, LAT_MAX);
   }
 }
 
