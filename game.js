@@ -682,72 +682,267 @@ function drawDrunkObstacle(gfx, cx, cy, scale) {
 
 function drawAbyssBridge(gfx, cx, bridgeLat, scale, length) {
   const s = scale || 1;
-  const aw = (length || 70) * s;  // ancho/longitud del abismo en px
+  const aw = (length || 80) * s;  // longitud del abismo en px
   const half = aw / 2;
   const x1 = cx - half;
   const x2 = cx + half;
 
-  // 1. ABISMO — vacío oscuro que cubre todo el ancho de la pista
-  gfx.fillStyle(0x050510, 0.95);
+  const y1_curb = trackCurbY(x1);
+  const y1_cliff = trackCliffY(x1);
+  const y2_curb = trackCurbY(x2);
+  const y2_cliff = trackCliffY(x2);
+
+  const y1_top = y1_curb - 35;
+  const y1_bot = y1_cliff + 45;
+  const y2_top = y2_curb - 35;
+  const y2_bot = y2_cliff + 45;
+
+  // =========================================================================
+  // 1. ABISMO PROFUNDO ESTRUCTURAL (Foso con paredes rocosas y profundidad 3D)
+  // =========================================================================
+  // Fondo negro abisal
+  gfx.fillStyle(0x03030a, 1);
   gfx.fillPoints([
-    {x: x1, y: trackCurbY(x1) - 12}, {x: x2, y: trackCurbY(x2) - 12},
-    {x: x2, y: trackCliffY(x2) + 8}, {x: x1, y: trackCliffY(x1) + 8},
+    { x: x1, y: y1_top }, { x: x2, y: y2_top },
+    { x: x2, y: y2_bot }, { x: x1, y: y1_bot },
   ], true);
 
-  // Bordes del abismo (grietas en el asfalto)
-  gfx.lineStyle(2 * s, 0x222230, 1);
-  gfx.lineBetween(x1, trackCurbY(x1) - 12, x1, trackCliffY(x1) + 8);
-  gfx.lineBetween(x2, trackCurbY(x2) - 12, x2, trackCliffY(x2) + 8);
+  // Pared rocosa izquierda (estrato rocoso en perspectiva)
+  const wallW = Math.min(aw * 0.4, 45);
+  gfx.fillStyle(0x181824, 1);
+  gfx.fillPoints([
+    { x: x1, y: y1_top },
+    { x: x1 + wallW, y: y1_top + 20 },
+    { x: x1 + wallW * 0.8, y: y1_bot - 20 },
+    { x: x1, y: y1_bot },
+  ], true);
 
-  // 2. PUENTE — pasarela estrecha sobre el abismo
-  const bHalf = 15; // mitad del ancho del puente en unidades de lat
+  // Estratos de roca intermedia
+  gfx.fillStyle(0x0f0f1c, 1);
+  gfx.fillPoints([
+    { x: x1 + wallW * 0.5, y: y1_top + 40 },
+    { x: x2 - 5, y: y2_top + 60 },
+    { x: x2 - 5, y: y2_bot - 10 },
+    { x: x1 + wallW * 0.4, y: y1_bot - 10 },
+  ], true);
+
+  // Grietas y sombras profundas en el foso
+  gfx.lineStyle(2 * s, 0x080812, 1);
+  gfx.lineBetween(x1 + wallW * 0.5, y1_top + 40, x1 + wallW * 0.8, y1_bot - 20);
+
+  // =========================================================================
+  // 2. BORDES DE ASFALTO FRACTURADOS Y VARILLAS EXPUESTAS
+  // =========================================================================
+  // Borde de corte de asfalto izquierdo (x1)
+  gfx.fillStyle(0x22222c, 1);
+  gfx.fillPoints([
+    { x: x1 - 6, y: y1_curb - 12 }, { x: x1, y: y1_curb - 12 },
+    { x: x1, y: y1_cliff + 12 }, { x: x1 - 6, y: y1_cliff + 12 },
+  ], true);
+  // Línea de brillo en el borde de fractura
+  gfx.lineStyle(1.8 * s, 0x484856, 1);
+  gfx.lineBetween(x1 - 6, y1_curb - 12, x1 - 6, y1_cliff + 12);
+
+  // Borde de corte de asfalto derecho (x2)
+  gfx.fillStyle(0x1c1c24, 1);
+  gfx.fillPoints([
+    { x: x2, y: y2_curb - 12 }, { x: x2 + 6, y: y2_curb - 12 },
+    { x: x2 + 6, y: y2_cliff + 12 }, { x: x2, y: y2_cliff + 12 },
+  ], true);
+  gfx.lineStyle(1.8 * s, 0x3a3a46, 1);
+  gfx.lineBetween(x2 + 6, y2_curb - 12, x2 + 6, y2_cliff + 12);
+
+  // Varillas de acero oxidado que asoman del asfalto roto
+  const rebarColors = [0x9e4a24, 0xbf6432, 0x7a3418];
+  for (let i = 0; i < 4; i++) {
+    const t = (i + 0.5) / 4;
+    const ry1 = y1_curb + t * (y1_cliff - y1_curb);
+    const rLen1 = 8 + (i % 3) * 5;
+    gfx.lineStyle(2, rebarColors[i % 3], 1);
+    gfx.lineBetween(x1, ry1, x1 + rLen1, ry1 + (i % 2 === 0 ? 3 : -3));
+
+    const ry2 = y2_curb + t * (y2_cliff - y2_curb);
+    const rLen2 = 7 + ((i + 1) % 3) * 5;
+    gfx.lineStyle(2, rebarColors[i % 3], 1);
+    gfx.lineBetween(x2, ry2, x2 - rLen2, ry2 + (i % 2 === 0 ? -2 : 3));
+  }
+
+  // Señalización vial de peligro: Conos de obra reflectivos en los extremos del asfalto
+  const drawCone = (cx, cy) => {
+    gfx.fillStyle(0x1a1a1a, 1);
+    gfx.fillRect(cx - 5, cy + 4, 10, 3);
+    gfx.fillStyle(0xff4400, 1);
+    gfx.fillTriangle(cx - 4, cy + 4, cx + 4, cy + 4, cx, cy - 10);
+    gfx.fillStyle(0xffffff, 1);
+    gfx.fillRect(cx - 2, cy - 3, 4, 3);
+  };
+  drawCone(x1 - 12, y1_curb + 10);
+  drawCone(x1 - 12, y1_cliff - 15);
+  drawCone(x2 + 12, y2_curb + 10);
+  drawCone(x2 + 12, y2_cliff - 15);
+
+  // =========================================================================
+  // 3. ESTRUCTURA Y VIGAS DE SOPORTE DEL PUENTE (Under-truss)
+  // =========================================================================
+  const bHalf = 16; // Mitad del ancho del puente en unidades de lat
   const bMin = bridgeLat - bHalf;
   const bMax = bridgeLat + bHalf;
 
-  // Esquinas del puente en coordenadas de pantalla
   const y1t = laneY(x1, bMin), y1b = laneY(x1, bMax);
   const y2t = laneY(x2, bMin), y2b = laneY(x2, bMax);
+  const midY_b = (y1b + y2b) / 2;
 
-  // Superficie de madera
-  gfx.fillStyle(0x6b4226, 1);
+  // Sombra proyectada del puente en el abismo
+  gfx.fillStyle(0x000000, 0.45);
   gfx.fillPoints([
-    {x: x1, y: y1t}, {x: x2, y: y2t},
-    {x: x2, y: y2b}, {x: x1, y: y1b},
+    { x: x1, y: y1t + 30 }, { x: x2, y: y2t + 30 },
+    { x: x2, y: y2b + 38 }, { x: x1, y: y1b + 38 },
   ], true);
 
-  // Tablones (líneas transversales adaptadas a la longitud)
-  gfx.lineStyle(1.5 * s, 0x4a2e15, 0.7);
-  const numPlanks = Math.max(3, Math.floor(aw / 14));
-  for (let i = 1; i < numPlanks; i++) {
-    const t = i / numPlanks;
-    const px = x1 + t * aw;
-    gfx.lineBetween(px, laneY(px, bMin), px, laneY(px, bMax));
+  // Vigas pesadas de madera/hierro que sostienen el puente desde las paredes del foso
+  gfx.lineStyle(4 * s, 0x221208, 1);
+  gfx.lineBetween(x1, y1b + 28, cx, midY_b + 22);
+  gfx.lineBetween(x2, y2b + 28, cx, midY_b + 22);
+  gfx.lineStyle(2 * s, 0x482812, 1);
+  gfx.lineBetween(x1, y1b + 26, cx, midY_b + 20);
+  gfx.lineBetween(x2, y2b + 26, cx, midY_b + 20);
+
+  // Tensores verticales bajo la plataforma
+  gfx.lineStyle(1.5 * s, 0x5a351a, 0.9);
+  gfx.lineBetween(cx, (y1t + y2t) / 2, cx, midY_b + 20);
+
+  // =========================================================================
+  // 4. PLATAFORMA DE TABLONES DE MADERA (3D Deck)
+  // =========================================================================
+  // Fascia / Borde frontal 3D de madera (da espesor visible a la pasarela)
+  const deckThickness = 7 * s;
+  gfx.fillStyle(0x381c0c, 1);
+  gfx.fillPoints([
+    { x: x1, y: y1b }, { x: x2, y: y2b },
+    { x: x2, y: y2b + deckThickness }, { x: x1, y: y1b + deckThickness },
+  ], true);
+  gfx.lineStyle(1.5 * s, 0x5c3016, 1);
+  gfx.lineBetween(x1, y1b, x2, y2b);
+
+  // Tablones individuales rústicos
+  const plankWidth = 8.5 * s;
+  const numPlanks = Math.max(4, Math.floor(aw / plankWidth));
+  const woodTones = [0x7c4a26, 0x6e3f1e, 0x8a552e, 0x5e3417, 0x774523];
+
+  for (let i = 0; i < numPlanks; i++) {
+    const px1 = x1 + (i / numPlanks) * aw;
+    const px2 = x1 + ((i + 0.9) / numPlanks) * aw;
+
+    const pt1 = laneY(px1, bMin), pb1 = laneY(px1, bMax);
+    const pt2 = laneY(px2, bMin), pb2 = laneY(px2, bMax);
+
+    gfx.fillStyle(woodTones[i % woodTones.length], 1);
+    gfx.fillPoints([
+      { x: px1, y: pt1 }, { x: px2, y: pt2 },
+      { x: px2, y: pb2 }, { x: px1, y: pb1 },
+    ], true);
+
+    // Separación oscura entre tablones
+    gfx.lineStyle(1.2 * s, 0x1a0d06, 0.85);
+    gfx.lineBetween(px2, pt2, px2, pb2);
+
+    // Clavos / pernos de hierro en los extremos de las tablas
+    gfx.fillStyle(0x22130b, 1);
+    gfx.fillRect(px1 + 1.5, pt1 + 1.5, 2.2, 2.2);
+    gfx.fillRect(px1 + 1.5, pb1 - 3.5, 2.2, 2.2);
   }
 
-  // Barandas metálicas a los lados
-  gfx.lineStyle(3 * s, 0x888888, 1);
-  gfx.lineBetween(x1, y1t - 5 * s, x2, y2t - 5 * s);
-  gfx.lineBetween(x1, y1b - 5 * s, x2, y2b - 5 * s);
+  // =========================================================================
+  // 5. BARANDAS OXIDADAS DE SAN ANTONIO (Con Malla, Tubos y Reflectivos)
+  // =========================================================================
+  const postHeight = 18 * s;
+  const numPosts = Math.max(3, Math.floor(aw / (22 * s)));
 
-  // Postes de la baranda adaptados a la longitud
-  gfx.fillStyle(0x666666, 1);
-  const numPosts = Math.max(2, Math.floor(aw / 32));
+  // Parantes verticales oxidados a lo largo de ambos lados
   for (let i = 0; i <= numPosts; i++) {
     const t = i / numPosts;
     const px = x1 + t * aw;
-    gfx.fillRect(px - 2 * s, laneY(px, bMin) - 12 * s, 4 * s, 12 * s);
-    gfx.fillRect(px - 2 * s, laneY(px, bMax) - 12 * s, 4 * s, 12 * s);
-  }
+    const pTopY = laneY(px, bMin);
+    const pBotY = laneY(px, bMax);
 
-  // Franjas de advertencia amarillo/negro en los bordes del abismo
-  for (let side = 0; side < 2; side++) {
-    const ex = side === 0 ? x1 - 4 * s : x2;
-    for (let i = 0; i < 3; i++) {
-      gfx.fillStyle(i % 2 === 0 ? 0xf2c40c : 0x1a1a1a, 1);
-      const ey = trackCurbY(ex) - 10 + i * 8 * s;
-      gfx.fillRect(ex, ey, 4 * s, 8 * s);
+    // Postes superiores
+    gfx.fillStyle(0x381408, 1); // sombra
+    gfx.fillRect(px - 2.5 * s, pTopY - postHeight, 5 * s, postHeight);
+    gfx.fillStyle(0x823716, 1); // tono óxido
+    gfx.fillRect(px - 1.5 * s, pTopY - postHeight, 3 * s, postHeight);
+    gfx.fillStyle(0xb55122, 1); // brillo óxido superior
+    gfx.fillRect(px - 1.5 * s, pTopY - postHeight, 3 * s, 3 * s);
+
+    // Postes inferiores
+    gfx.fillStyle(0x381408, 1);
+    gfx.fillRect(px - 2.5 * s, pBotY - postHeight, 5 * s, postHeight);
+    gfx.fillStyle(0x823716, 1);
+    gfx.fillRect(px - 1.5 * s, pBotY - postHeight, 3 * s, postHeight);
+    gfx.fillStyle(0xb55122, 1);
+    gfx.fillRect(px - 1.5 * s, pBotY - postHeight, 3 * s, 3 * s);
+
+    // Cruces de alambre oxidado (malla de seguridad) entre postes
+    if (i < numPosts) {
+      const nextPx = x1 + ((i + 1) / numPosts) * aw;
+      const nextTopY = laneY(nextPx, bMin);
+      const nextBotY = laneY(nextPx, bMax);
+
+      gfx.lineStyle(1.2 * s, 0x52230e, 0.8);
+      // Malla baranda superior
+      gfx.lineBetween(px, pTopY - 2 * s, nextPx, nextTopY - postHeight + 3 * s);
+      gfx.lineBetween(px, pTopY - postHeight + 3 * s, nextPx, nextTopY - 2 * s);
+      // Malla baranda inferior
+      gfx.lineBetween(px, pBotY - 2 * s, nextPx, nextBotY - postHeight + 3 * s);
+      gfx.lineBetween(px, pBotY - postHeight + 3 * s, nextPx, nextBotY - 2 * s);
     }
   }
+
+  // Tubos horizontales principales de la baranda oxidada
+  // -- Baranda Superior --
+  gfx.lineStyle(4 * s, 0x2a0c04, 1); // sombra
+  gfx.lineBetween(x1, y1t - postHeight + 2, x2, y2t - postHeight + 2);
+  gfx.lineStyle(3 * s, 0x8a3916, 1); // óxido principal
+  gfx.lineBetween(x1, y1t - postHeight, x2, y2t - postHeight);
+  gfx.lineStyle(1.2 * s, 0xc8602b, 1); // filo brillante superior
+  gfx.lineBetween(x1, y1t - postHeight - 1, x2, y2t - postHeight - 1);
+  // Tubo intermedio
+  gfx.lineStyle(2 * s, 0x732e12, 1);
+  gfx.lineBetween(x1, y1t - postHeight * 0.5, x2, y2t - postHeight * 0.5);
+
+  // -- Baranda Inferior --
+  gfx.lineStyle(4 * s, 0x2a0c04, 1);
+  gfx.lineBetween(x1, y1b - postHeight + 2, x2, y2b - postHeight + 2);
+  gfx.lineStyle(3 * s, 0x8a3916, 1);
+  gfx.lineBetween(x1, y1b - postHeight, x2, y2b - postHeight);
+  gfx.lineStyle(1.2 * s, 0xc8602b, 1);
+  gfx.lineBetween(x1, y1b - postHeight - 1, x2, y2b - postHeight - 1);
+  // Tubo intermedio
+  gfx.lineStyle(2 * s, 0x732e12, 1);
+  gfx.lineBetween(x1, y1b - postHeight * 0.5, x2, y2b - postHeight * 0.5);
+
+  // =========================================================================
+  // 6. SEÑALES Y LUCES REFLECTIVAS EN LAS ENTRADAS DEL PUENTE
+  // =========================================================================
+  const drawEntryMarker = (ex, ey) => {
+    // Poste reforzado
+    gfx.fillStyle(0x1a1a1a, 1);
+    gfx.fillRect(ex - 3.5 * s, ey - postHeight - 4 * s, 7 * s, postHeight + 4 * s);
+    // Franjas de advertencia amarillo tráfico
+    for (let f = 0; f < 3; f++) {
+      gfx.fillStyle(f % 2 === 0 ? 0xf5b700 : 0x1a1a1a, 1);
+      gfx.fillRect(ex - 3.5 * s, ey - postHeight - 2 * s + f * 5 * s, 7 * s, 4 * s);
+    }
+    // Reflector / Ojo de gato luminoso en la punta
+    gfx.fillStyle(0xff8800, 0.9);
+    gfx.fillCircle(ex, ey - postHeight - 5 * s, 4.5 * s);
+    gfx.fillStyle(0xffff44, 1);
+    gfx.fillCircle(ex, ey - postHeight - 5 * s, 2.2 * s);
+  };
+
+  drawEntryMarker(x1, y1t);
+  drawEntryMarker(x1, y1b);
+  drawEntryMarker(x2, y2t);
+  drawEntryMarker(x2, y2b);
 }
 
 // --- Configuración por tipo -------------------------------------------------
@@ -840,13 +1035,20 @@ function checkObstacleProximity(scene, ob, player, flagKey) {
   const obY = laneY(ob.x, ob.lat);
 
   if (ob.type === 'rail') {
-    // El abismo cubre todo el ancho — usar posición en el eje de la pista
-    // (ignora offset lateral para que no se pueda esquivar moviéndose de lado)
     const trackX = 400 + player.prog;
     const hitRadius = ob.hitRadius || def.hitRadius;
-    if (Math.abs(ob.x - trackX) < hitRadius) {
-      ob[flagKey] = true;
-      resolveObstacleHit(scene, ob, player);
+    const inAbyssZone = Math.abs(ob.x - trackX) < hitRadius;
+    if (inAbyssZone) {
+      const onBridge = Math.abs(player.lat - ob.lat) <= def.bridgeHalfW;
+      const jumpingOver = player.jumping && player.jumpZ > 0.35;
+      if (!onBridge && !jumpingOver) {
+        // Se cayó al abismo al salir del puente
+        ob[flagKey] = true;
+        applyKnockback(scene, player);
+      } else if (ob.x < trackX - hitRadius + 10) {
+        // Pasó exitosamente todo el tramo del puente
+        ob[flagKey] = true;
+      }
     }
   } else {
     // Huecos y borrachos: distancia real en pantalla
