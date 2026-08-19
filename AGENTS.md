@@ -1,10 +1,10 @@
 # AI Agent Instructions for Platanus Hack 26: Arcade Challenge
 
-You are helping build an arcade game for a hackathon challenge. Follow these instructions carefully.
+You are helping build **San Antonio Drift** — a two-player infinite downhill race set in Barrio San Antonio, Cali. Two players ride beer crates down a hill, dodging obstacles, drifting along rusted railings, and shoving each other. Full game design is in `REQUERIMIENTOS.md` and `HOJADERUTA.md`.
 
 ## Your Goal
 
-Create an engaging, fun arcade game in **game.js** using **Phaser 3** (v3.87.0) that meets all restrictions.
+Implement **San Antonio Drift** in **game.js** using **Phaser 3** (v3.87.0), meeting all restrictions below.
 
 ## ⚠️ IMPORTANT: Files to Edit
 
@@ -67,7 +67,8 @@ This checks:
 
 ## Game Structure
 
-`game.js` already contains a full working starter — two players moving around with sound and storage. Use it as your base. A copy is also in the README for reference.
+`game.js` is empty — build San Antonio Drift from scratch following `REQUERIMIENTOS.md`.
+Key sections to implement: CABINET_KEYS mapping, Phaser config, scene phases (start / playing / gameover), pseudo-3D scroll, player characters (Diablito + Nea), obstacle generator, jump/drift/push mechanics, parallax background, and Web Audio salsa music.
 
 ## Controls
 
@@ -108,4 +109,4 @@ await window.platanusArcadeStorage.remove('my-key');
 4. **Generate assets**: Draw shapes instead of using images when possible
 5. **Let the user test**: The user will run `npm run dev` when they want to test - focus on building the game
 
-Good luck building an amazing arcade game! <�
+Good luck building San Antonio Drift!<�
