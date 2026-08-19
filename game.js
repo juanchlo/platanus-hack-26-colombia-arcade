@@ -736,15 +736,15 @@ function drawBeerCrate(gfx, cx, cy, scale) {
   const ft = cy - fh / 2;  // top y
   const fb = cy + fh / 2;  // bottom y
 
-  // Palette — dark maroon plastic, like the Trougott Simon crate
-  const C_TOP    = 0xd93232;  // top face (sunlit)
-  const C_FRONT  = 0xb82020;  // front face
-  const C_RIGHT  = 0x8a1515;  // right face (shadow)
-  const C_DARK   = 0x3a0808;  // outlines
-  const C_HOLE   = 0x180303;  // handle holes (near black)
-  const C_SHINE  = 0xe84444;  // highlight strip at top of front
-  const C_STRIPE = 0xa51c1c;  // horizontal rib lines
-  const C_DIV    = 0x7a1212;  // bottle divider lines on top face
+  // Palette — dark maroon plastic, darkened so characters read clearly on top
+  const C_TOP    = 0x8a1a1a;  // top face
+  const C_FRONT  = 0x6e1010;  // front face
+  const C_RIGHT  = 0x4a0a0a;  // right face (shadow)
+  const C_DARK   = 0x1a0303;  // outlines
+  const C_HOLE   = 0x0a0101;  // handle holes (near black)
+  const C_SHINE  = 0xa02222;  // highlight strip at top of front
+  const C_STRIPE = 0x5c0d0d;  // horizontal rib lines
+  const C_DIV    = 0x3d0808;  // bottle divider lines on top face
 
   // --- RIGHT FACE (drawn first — sits behind front face) ---
   gfx.fillStyle(C_RIGHT, 1);
