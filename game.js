@@ -425,7 +425,7 @@ function renderOnePlayer(gfx, player, time, speed) {
   }
 
   // Frecuencia de ondeo: crece linealmente con velocidad hasta doblar, nunca baja
-  const targetWF = 0.008 + Math.min(speed / 150, 1) * 0.292;
+  const targetWF = 0.008 + Math.min(speed / 600, 1) * 0.292;
   player._wF = Math.max(player._wF || 0.008, targetWF);
 
   // Canasta y personaje suben juntos; al bajar el personaje cae más lento (flotación)
