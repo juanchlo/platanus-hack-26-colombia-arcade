@@ -1154,35 +1154,25 @@ function drawChango(gfx, cx, cy, scale, time, speed, jumpZ) {
   const blink = (t % 2800) < 110;                          // parpadeo cada 2.8 s
   const ubx = bx + leanX;                                  // pivot cuerpo superior
 
-  // ── COLA — cuadrilátero ondulante (raíz fija, punta flamea en el viento)
-  // La raíz sigue al cuerpo superior (ubx), la punta oscila independiente
-  const tRX = bx - r(2.5);        // root x (no lean — sale de la espalda baja)
-  const tRY = baseY - r(3.2);     // root y
-  const tW  = r(0.9);             // grosor
-  // Segmento 1: raíz → codo
+  // ── COLA — cinta continua de raíz a punta, ondula con el viento
+  const cRX = ubx - r(2.7);                                   // raíz: borde izq del torso
+  const cRY = baseY - r(3.8);
+  const cMX = bx - r(6.5) + Math.round(tailWave * 0.4);     // punto medio
+  const cMY = baseY - r(6.5);
+  const cPX = bx - r(5.5) + tailWave;                        // punta
+  const cPY = baseY - r(10.0) + tailBob;
+  const hw  = r(0.55);
   gfx.fillStyle(0xcc2222, 1);
-  gfx.fillRect(tRX, tRY, tW, r(1.8));
-  // Segmento 2: codo → tramo vertical (ondula con tailWave)
-  const elbowX = tRX - r(3.8) + Math.round(tailWave * 0.3);
-  const elbowY = baseY - r(4.8);
-  gfx.fillRect(elbowX, elbowY, r(1.5), r(0.8));
-  // Tramo final: cuadrilátero que flamea (base arriba fija, punta oscila ±13px)
-  const stemX = elbowX + Math.round(tailWave * 0.15);
-  const stemTopY = elbowY - r(2.0);
-  const tipY = stemTopY - r(2.2);
   gfx.fillPoints([
-    { x: stemX,          y: stemTopY },
-    { x: stemX - tW,     y: stemTopY },
-    { x: stemX - tW + tailWave, y: tipY + tailBob },
-    { x: stemX + tailWave,      y: tipY + tailBob },
+    { x: cRX,       y: cRY - hw },
+    { x: cMX - hw,  y: cMY },
+    { x: cPX - hw,  y: cPY + hw },
+    { x: cPX + hw,  y: cPY + hw },
+    { x: cMX + hw,  y: cMY },
+    { x: cRX,       y: cRY + hw },
   ], true);
-  // Punta de pica (sigue la onda)
-  const pX = stemX + tailWave;
-  const pY = tipY + tailBob;
   gfx.fillStyle(0x880000, 1);
-  gfx.fillTriangle(pX - r(0.7), pY, pX + r(0.7), pY, pX, pY - r(2.0));
-  gfx.fillRect(pX - r(1.2), pY - r(0.6), r(0.9), r(0.8));   // oreja izq pica
-  gfx.fillRect(pX + r(0.3), pY - r(0.6), r(0.9), r(0.8));   // oreja der pica
+  gfx.fillTriangle(cPX - r(0.8), cPY + hw, cPX + r(0.8), cPY + hw, cPX, cPY - r(2.2));
 
   // ── BOTA NEGRA (cuerpo inferior — sin lean)
   gfx.fillStyle(0x111111, 1);
