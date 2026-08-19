@@ -325,7 +325,7 @@ function createPlayers(scene) {
       label: 'P2',
     },
   };
-  scene.playerGraphics = scene.add.graphics();
+  scene.playerGraphics = scene.add.graphics().setDepth(5);
   renderPlayers(scene);
 }
 
@@ -447,49 +447,72 @@ function drawDrunkObstacle(gfx, cx, cy, scale) {
   drawBottle(gfx, cx - 38 * s, cy + 11 * s, s, 1.0);
 }
 
-function drawRustyRailObstacle(gfx, cx, cy, scale, length) {
+function drawAbyssBridge(gfx, cx, bridgeLat, scale) {
   const s = scale || 1;
-  const len = length || 90 * s;
+  const aw = 70 * s;  // ancho del abismo en px
+  const half = aw / 2;
+  const x1 = cx - half;
+  const x2 = cx + half;
 
-  const C_POST      = 0x6b4226;
-  const C_PIPE_BASE = 0x8b4513;
-  const C_RUST_1    = 0xb35a1f;
-  const C_RUST_2    = 0xd9782e;
-  const C_HAZARD_Y  = 0xf2c40c;
-  const C_HAZARD_B  = 0x1a1a1a;
-  const C_DARK      = 0x2a1608;
+  // 1. ABISMO — vacío oscuro que cubre todo el ancho de la pista
+  gfx.fillStyle(0x050510, 0.95);
+  gfx.fillPoints([
+    {x: x1, y: trackCurbY(x1) - 12}, {x: x2, y: trackCurbY(x2) - 12},
+    {x: x2, y: trackCliffY(x2) + 8}, {x: x1, y: trackCliffY(x1) + 8},
+  ], true);
 
-  gfx.fillStyle(C_POST, 1);
-  gfx.fillRect(cx - len / 2, cy - 6 * s, 5 * s, 26 * s);
-  gfx.fillRect(cx + len / 2 - 5 * s, cy - 6 * s, 5 * s, 26 * s);
+  // Bordes del abismo (grietas en el asfalto)
+  gfx.lineStyle(2 * s, 0x222230, 1);
+  gfx.lineBetween(x1, trackCurbY(x1) - 12, x1, trackCliffY(x1) + 8);
+  gfx.lineBetween(x2, trackCurbY(x2) - 12, x2, trackCliffY(x2) + 8);
 
-  gfx.fillStyle(C_RUST_1, 0.8);
-  gfx.fillCircle(cx - len / 2 + 2 * s, cy + 16 * s, 6 * s);
-  gfx.fillCircle(cx + len / 2 - 2 * s, cy + 16 * s, 6 * s);
+  // 2. PUENTE — pasarela estrecha sobre el abismo
+  const bHalf = 15; // mitad del ancho del puente en unidades de lat
+  const bMin = bridgeLat - bHalf;
+  const bMax = bridgeLat + bHalf;
 
-  gfx.lineStyle(6 * s, C_PIPE_BASE, 1);
-  gfx.beginPath();
-  gfx.moveTo(cx - len / 2, cy - 4 * s);
-  gfx.lineTo(cx, cy + 2 * s);
-  gfx.lineTo(cx + len / 2, cy - 4 * s);
-  gfx.strokePath();
+  // Esquinas del puente en coordenadas de pantalla
+  const y1t = laneY(x1, bMin), y1b = laneY(x1, bMax);
+  const y2t = laneY(x2, bMin), y2b = laneY(x2, bMax);
 
-  for (let i = 0; i < 5; i++) {
-    const t = i / 4;
-    const px = cx - len / 2 + t * len;
-    const py = cy - 4 * s + Math.sin(t * Math.PI) * 6 * s;
-    gfx.fillStyle(i % 2 === 0 ? C_RUST_1 : C_RUST_2, 0.85);
-    gfx.fillCircle(px, py, 3 * s + (i % 3));
+  // Superficie de madera
+  gfx.fillStyle(0x6b4226, 1);
+  gfx.fillPoints([
+    {x: x1, y: y1t}, {x: x2, y: y2t},
+    {x: x2, y: y2b}, {x: x1, y: y1b},
+  ], true);
+
+  // Tablones (líneas transversales)
+  gfx.lineStyle(1.5 * s, 0x4a2e15, 0.7);
+  for (let i = 1; i < 5; i++) {
+    const t = i / 5;
+    const px = x1 + t * aw;
+    gfx.lineBetween(px, laneY(px, bMin), px, laneY(px, bMax));
   }
 
-  for (let i = 0; i < 4; i++) {
-    gfx.fillStyle(i % 2 === 0 ? C_HAZARD_Y : C_HAZARD_B, 1);
-    gfx.fillRect(cx - len / 2 - 2 * s + i * 3 * s, cy - 12 * s, 3 * s, 8 * s);
+  // Barandas metálicas a los lados
+  gfx.lineStyle(3 * s, 0x888888, 1);
+  gfx.lineBetween(x1, y1t - 5 * s, x2, y2t - 5 * s);
+  gfx.lineBetween(x1, y1b - 5 * s, x2, y2b - 5 * s);
+
+  // Postes de la baranda
+  gfx.fillStyle(0x666666, 1);
+  for (let i = 0; i <= 2; i++) {
+    const t = i / 2;
+    const px = x1 + t * aw;
+    gfx.fillRect(px - 2 * s, laneY(px, bMin) - 12 * s, 4 * s, 12 * s);
+    gfx.fillRect(px - 2 * s, laneY(px, bMax) - 12 * s, 4 * s, 12 * s);
   }
 
-  gfx.lineStyle(1 * s, C_DARK, 0.7);
-  gfx.strokeRect(cx - len / 2, cy - 6 * s, 5 * s, 26 * s);
-  gfx.strokeRect(cx + len / 2 - 5 * s, cy - 6 * s, 5 * s, 26 * s);
+  // Franjas de advertencia amarillo/negro en los bordes del abismo
+  for (let side = 0; side < 2; side++) {
+    const ex = side === 0 ? x1 - 4 * s : x2;
+    for (let i = 0; i < 3; i++) {
+      gfx.fillStyle(i % 2 === 0 ? 0xf2c40c : 0x1a1a1a, 1);
+      const ey = trackCurbY(ex) - 10 + i * 8 * s;
+      gfx.fillRect(ex, ey, 4 * s, 8 * s);
+    }
+  }
 }
 
 // --- Configuración por tipo -------------------------------------------------
@@ -498,7 +521,7 @@ function drawRustyRailObstacle(gfx, cx, cy, scale, length) {
 const OBSTACLE_DEF = {
   hole:  { hazardRadius: 16, hitRadius: 30, scale: 1.1 },
   drunk: { hazardRadius: 26, hitRadius: 42, scale: 1.5 },
-  rail:  { railSafeMin: 55, railSafeMax: 85, hitRadius: 28, scale: 1 },
+  rail:  { bridgeHalfW: 15, hitRadius: 40, scale: 1 },
 };
 
 const SPAWN_X = W + 90; // aparecen fuera de pantalla, a la derecha
@@ -506,7 +529,7 @@ const DESPAWN_X = -80;
 
 function createObstaclePool(scene) {
   scene.obstacles = [];
-  scene.obstacleGraphics = scene.add.graphics();
+  scene.obstacleGraphics = scene.add.graphics().setDepth(3);
   scene.gameState.spawnTimer = 1.2; // primer obstáculo llega poco después de arrancar
 }
 
@@ -516,7 +539,8 @@ function spawnObstacle(scene) {
 
   let lat;
   if (type === 'rail') {
-    lat = Phaser.Math.Between(60, 80);
+    // El puente puede estar en cualquier posición lateral de la pista
+    lat = Phaser.Math.Between(LAT_MIN + 20, LAT_MAX - 20);
   } else {
     lat = Phaser.Math.Between(LAT_MIN + 10, LAT_MAX - 10);
   }
@@ -565,7 +589,7 @@ function updateObstacles(scene, delta) {
     const def = OBSTACLE_DEF[ob.type];
     if (ob.type === 'hole') drawPothole(gfx, ob.x, y, def.scale);
     else if (ob.type === 'drunk') drawDrunkObstacle(gfx, ob.x, y, def.scale);
-    else if (ob.type === 'rail') drawRustyRailObstacle(gfx, ob.x, y, def.scale, 110);
+    else if (ob.type === 'rail') drawAbyssBridge(gfx, ob.x, ob.lat, def.scale);
 
     if (ob.x < DESPAWN_X) scene.obstacles.splice(i, 1);
   }
@@ -578,8 +602,10 @@ function checkObstacleProximity(scene, ob, player, flagKey) {
   const obY = laneY(ob.x, ob.lat);
 
   if (ob.type === 'rail') {
-    // La baranda usa proximidad en X + chequeo de zona lateral
-    if (Math.abs(ob.x - player.x) < def.hitRadius) {
+    // El abismo cubre todo el ancho — usar posición en el eje de la pista
+    // (ignora offset lateral para que no se pueda esquivar moviéndose de lado)
+    const trackX = 400 + player.prog;
+    if (Math.abs(ob.x - trackX) < def.hitRadius) {
       ob[flagKey] = true;
       resolveObstacleHit(scene, ob, player);
     }
@@ -600,9 +626,9 @@ function resolveObstacleHit(scene, obstacle, player) {
   const def = OBSTACLE_DEF[obstacle.type];
 
   if (obstacle.type === 'rail') {
-    // Debe estar drifteando MUY cerca de la baranda (franja segura); si no, lo golpea
-    const inSafeZone = player.lat >= def.railSafeMin && player.lat <= def.railSafeMax;
-    if (!inSafeZone) applyKnockback(scene, player);
+    // Solo estás a salvo si estás sobre el puente (auto-montaje)
+    const onBridge = Math.abs(player.lat - obstacle.lat) <= def.bridgeHalfW;
+    if (!onBridge) applyKnockback(scene, player);
     return;
   }
 
