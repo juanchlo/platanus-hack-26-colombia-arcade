@@ -286,19 +286,21 @@ function createPlayers(scene) {
   scene.players = {
     p1: {
       lat: -40, // Posición lateral (negativo es hacia el andén izquierdo)
+      prog: 0,  // Posición adelante(+)/atrás(-) respecto a la línea del pelotón
       x: 0, y: 0, 
       jumping: false, jumpCharging: false, jumpHeld: 0, jumpElapsed: 0, jumpDuration: 0, jumpZ: 0,
       pushing: false,
-      trailPenalty: 0, stumbleTimer: 0,
+      paralyzed: 0,
       alive: true,
       label: 'P1',
     },
     p2: {
       lat: 40, // Posición lateral (positivo es hacia el barranco derecho)
+      prog: 0,
       x: 0, y: 0,
       jumping: false, jumpCharging: false, jumpHeld: 0, jumpElapsed: 0, jumpDuration: 0, jumpZ: 0,
       pushing: false,
-      trailPenalty: 0, stumbleTimer: 0,
+      paralyzed: 0,
       alive: true,
       label: 'P2',
     },
@@ -323,9 +325,9 @@ function renderOnePlayer(gfx, player) {
   gfx.fillStyle(0x000000, 0.3);
   gfx.fillEllipse(player.x, player.y + 14, 34 * shrink, 10 * shrink);
 
-  // Destello rojo breve al tropezar con un obstáculo
-  if (player.stumbleTimer > 0) {
-    gfx.fillStyle(0xff3333, 0.35 * Math.min(1, player.stumbleTimer / 0.5));
+  // Destello rojo breve mientras está paralizado tras un golpe
+  if (player.paralyzed > 0) {
+    gfx.fillStyle(0xff3333, 0.35 * Math.min(1, player.paralyzed / PARALYZE_DURATION));
     gfx.fillCircle(player.x, player.y, 46);
   }
 
@@ -505,7 +507,8 @@ function spawnObstacle(scene) {
     type, lat,
     x: SPAWN_X,
     prevX: SPAWN_X,
-    resolved: false, // ya se evaluó el cruce por la línea de colisión
+    resolvedP1: false, // ya se evaluó el cruce para cada jugador (cada uno tiene su propia línea, según su 'prog')
+    resolvedP2: false,
   });
 }
 
@@ -531,12 +534,10 @@ function updateObstacles(scene, delta) {
     ob.prevX = ob.x;
     ob.x -= scene.gameState.speed * dt;
 
-    // Resolución del choque: se evalúa una sola vez, al cruzar la línea del "ahora"
-    if (!ob.resolved && ob.prevX >= COLLISION_X && ob.x < COLLISION_X) {
-      ob.resolved = true;
-      resolveObstacleHit(scene, ob, p1);
-      resolveObstacleHit(scene, ob, p2);
-    }
+    // Resolución del choque: se evalúa una sola vez por jugador, al cruzar
+    // SU propia línea del "ahora" (la línea base desplazada por su 'prog').
+    checkObstacleCrossing(scene, ob, p1, 'resolvedP1');
+    checkObstacleCrossing(scene, ob, p2, 'resolvedP2');
 
     const y = laneY(ob.x, ob.lat);
     const def = OBSTACLE_DEF[ob.type];
@@ -548,17 +549,23 @@ function updateObstacles(scene, delta) {
   }
 }
 
+function checkObstacleCrossing(scene, ob, player, flagKey) {
+  if (ob[flagKey]) return;
+  const line = COLLISION_X + player.prog; // adelantarse o rezagarse mueve tu propia línea de choque
+  if (ob.prevX >= line && ob.x < line) {
+    ob[flagKey] = true;
+    resolveObstacleHit(scene, ob, player);
+  }
+}
+
 function resolveObstacleHit(scene, obstacle, player) {
   if (!player.alive) return;
   const def = OBSTACLE_DEF[obstacle.type];
 
   if (obstacle.type === 'rail') {
-    // Debe estar drifteando MUY cerca de la baranda (franja segura); si no, se va al vacío
+    // Debe estar drifteando MUY cerca de la baranda (franja segura); si no, lo golpea
     const inSafeZone = player.lat >= def.railSafeMin && player.lat <= def.railSafeMax;
-    if (!inSafeZone) {
-      player.alive = false;
-      player.eliminatedBy = 'void';
-    }
+    if (!inSafeZone) applyKnockback(scene, player);
     return;
   }
 
@@ -568,16 +575,17 @@ function resolveObstacleHit(scene, obstacle, player) {
 
   if (isClearingJump(player, obstacle.type)) return; // salto limpio, sin penalización
 
-  applyStumble(scene, player);
+  applyKnockback(scene, player);
 }
 
-function applyStumble(scene, player) {
-  player.trailPenalty = (player.trailPenalty || 0) + 1;
-  player.stumbleTimer = 0.5;
-  if (player.trailPenalty >= 3) {
-    player.alive = false;
-    player.eliminatedBy = 'trail';
-  }
+// Un obstáculo fallado NO es game over: te manda hacia atrás y te paraliza
+// un instante. Sólo perdés si te quedan empujando tanto que salís de pantalla.
+function applyKnockback(scene, player) {
+  player.prog -= PROG_KNOCKBACK;
+  player.paralyzed = PARALYZE_DURATION;
+  player.jumping = false;
+  player.jumpCharging = false;
+  player.jumpZ = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -636,7 +644,7 @@ function createStartScreen(scene) {
     targets: startText, alpha: 0.15, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
   });
 
-  c.add(scene.add.text(W / 2, H - 28, 'P1: A/D mover   U saltar   I empujar     P2: ←/→ mover   R saltar   T empujar', {
+  c.add(scene.add.text(W / 2, H - 28, 'P1: WASD mover   U saltar   I empujar     P2: Flechas mover   R saltar   T empujar', {
     fontFamily: 'monospace', fontSize: '10px', color: '#444444',
   }).setOrigin(0.5));
 
@@ -705,8 +713,8 @@ function startGame(scene) {
     player.jumpElapsed = 0;
     player.jumpDuration = 0;
     player.jumpZ = 0;
-    player.trailPenalty = 0;
-    player.stumbleTimer = 0;
+    player.prog = 0;
+    player.paralyzed = 0;
   }
   scene.players.p1.x = W / 2 - 80;
   scene.players.p2.x = W / 2 + 80;
@@ -757,32 +765,70 @@ function updatePlayers(scene, delta, time) {
   handlePlayerInput(scene, p1, 'P1', dt);
   handlePlayerInput(scene, p2, 'P2', dt);
   resolvePlayerCollision(scene, p1, p2);
+
+  // Si el rezago (empujones acumulados hacia atrás) es demasiado, el jugador
+  // queda fuera de pantalla por arriba y pierde — sin necesidad de un solo golpe fatal.
+  for (const player of [p1, p2]) {
+    if (player.alive && player.prog < PROG_ELIMINATE) {
+      player.alive = false;
+      player.eliminatedBy = 'trail';
+    }
+  }
+
   renderPlayers(scene);
 }
+
+// Rango de movimiento voluntario adelante/atrás (el empujón de un obstáculo
+// SÍ puede mandarte más atrás de este límite; sólo avanzando lo recuperás).
+const PROG_MOVE_MIN = -60;
+const PROG_MOVE_MAX = 60;
+const PROG_KNOCKBACK = 50;     // cuánto te manda hacia atrás un obstáculo fallado
+const PROG_ELIMINATE = -170;   // más atrás que esto = salís de pantalla, perdés
+const PARALYZE_DURATION = 0.5; // segundos paralizado tras un golpe
 
 function handlePlayerInput(scene, player, prefix, dt) {
   if (!player.alive) return;
 
-  const latSpeed = 220; // Velocidad de esquive
-  let dLat = 0;
+  if (player.paralyzed > 0) {
+    player.paralyzed = Math.max(0, player.paralyzed - dt);
+  }
 
-  // Izquierda te mueve hacia el andén (arriba-derecha visualmente en la perpendicular)
-  if (held[prefix + '_L']) dLat -= 1;
-  // Derecha te mueve hacia el barranco (abajo-izquierda visualmente en la perpendicular)
-  if (held[prefix + '_R']) dLat += 1;
+  const latSpeed = 220;  // Velocidad de esquive lateral
+  const progSpeed = 170; // Velocidad de avance/retroceso
 
-  player.lat += dLat * latSpeed * dt;
-  
-  // Limitar para que no se salgan del asfalto matemáticamente
-  player.lat = Phaser.Math.Clamp(player.lat, -85, 85);
+  // Mientras está paralizado (recién golpeado) no responde a los controles
+  if (player.paralyzed <= 0) {
+    let dLat = 0;
+    // Izquierda te mueve hacia el andén (arriba-derecha visualmente en la perpendicular)
+    if (held[prefix + '_L']) dLat -= 1;
+    // Derecha te mueve hacia el barranco (abajo-izquierda visualmente en la perpendicular)
+    if (held[prefix + '_R']) dLat += 1;
+    if (dLat !== 0) {
+      player.lat = Phaser.Math.Clamp(player.lat + dLat * latSpeed * dt, -85, 85);
+    }
 
-  // Convertir la posición 'lat' en coordenadas de pantalla diagonales
+    let dProg = 0;
+    if (held[prefix + '_U']) dProg += 1; // adelante: te adelantás en la bajada
+    if (held[prefix + '_D']) dProg -= 1; // atrás: te rezagás a propósito
+    if (dProg !== 0) {
+      // El movimiento voluntario respeta el rango normal; si venís de un
+      // empujón más atrás de ese rango, primero tenés que remontar hasta él.
+      player.prog = Phaser.Math.Clamp(player.prog + dProg * progSpeed * dt, PROG_MOVE_MIN, PROG_MOVE_MAX);
+    }
+  }
+
+  // Convertir 'lat' + 'prog' en coordenadas de pantalla diagonales
   const baseX = W / 2; // 400
   const baseY = baseX * 0.5 + 225; // 425 (centro de la pista)
-  
-  // Ecuación perpendicular para moverse 3/4
+
+  // Eje lateral (perpendicular a la pista)
   player.x = baseX + player.lat * (-2);
   player.y = baseY + player.lat * (1);
+  // Eje de avance/retroceso (paralelo a la pendiente de la pista, misma m = 0.5)
+  player.x += player.prog * 1;
+  player.y += player.prog * 0.5;
+
+  if (player.paralyzed > 0) return; // no puede saltar mientras está aturdido
 
   // --- Salto variable: mantené presionado para cargar, soltá para saltar ---
   // Hueco (obstáculo pequeño) = toque corto. Botellas+borracho (grande) = carga larga.
@@ -817,8 +863,6 @@ function handlePlayerInput(scene, player, prefix, dt) {
       player.jumpZ = Math.sin(Math.PI * (player.jumpElapsed / player.jumpDuration));
     }
   }
-
-  if (player.stumbleTimer > 0) player.stumbleTimer = Math.max(0, player.stumbleTimer - dt);
 }
 
 // Duración de salto necesaria para "limpiar" cada tipo de obstáculo
@@ -829,7 +873,8 @@ function isClearingJump(player, obstacleType) {
 }
 
 function resolvePlayerCollision(scene, p1, p2) {
-  // Las colisiones ahora son 1D sobre el eje lateral
+  // Las colisiones se resuelven en el eje lateral, como antes — el nuevo eje
+  // de avance/retroceso no bloquea entre jugadores, sólo el lateral.
   const minLatDist = 40; // Ancho lateral de la canasta
   const diff = p1.lat - p2.lat;
   
