@@ -680,9 +680,9 @@ function drawDrunkObstacle(gfx, cx, cy, scale) {
   drawBottle(gfx, cx - 38 * s, cy + 11 * s, s, 1.0);
 }
 
-function drawAbyssBridge(gfx, cx, bridgeLat, scale) {
+function drawAbyssBridge(gfx, cx, bridgeLat, scale, length) {
   const s = scale || 1;
-  const aw = 70 * s;  // ancho del abismo en px
+  const aw = (length || 70) * s;  // ancho/longitud del abismo en px
   const half = aw / 2;
   const x1 = cx - half;
   const x2 = cx + half;
@@ -715,10 +715,11 @@ function drawAbyssBridge(gfx, cx, bridgeLat, scale) {
     {x: x2, y: y2b}, {x: x1, y: y1b},
   ], true);
 
-  // Tablones (líneas transversales)
+  // Tablones (líneas transversales adaptadas a la longitud)
   gfx.lineStyle(1.5 * s, 0x4a2e15, 0.7);
-  for (let i = 1; i < 5; i++) {
-    const t = i / 5;
+  const numPlanks = Math.max(3, Math.floor(aw / 14));
+  for (let i = 1; i < numPlanks; i++) {
+    const t = i / numPlanks;
     const px = x1 + t * aw;
     gfx.lineBetween(px, laneY(px, bMin), px, laneY(px, bMax));
   }
@@ -728,10 +729,11 @@ function drawAbyssBridge(gfx, cx, bridgeLat, scale) {
   gfx.lineBetween(x1, y1t - 5 * s, x2, y2t - 5 * s);
   gfx.lineBetween(x1, y1b - 5 * s, x2, y2b - 5 * s);
 
-  // Postes de la baranda
+  // Postes de la baranda adaptados a la longitud
   gfx.fillStyle(0x666666, 1);
-  for (let i = 0; i <= 2; i++) {
-    const t = i / 2;
+  const numPosts = Math.max(2, Math.floor(aw / 32));
+  for (let i = 0; i <= numPosts; i++) {
+    const t = i / numPosts;
     const px = x1 + t * aw;
     gfx.fillRect(px - 2 * s, laneY(px, bMin) - 12 * s, 4 * s, 12 * s);
     gfx.fillRect(px - 2 * s, laneY(px, bMax) - 12 * s, 4 * s, 12 * s);
@@ -757,8 +759,8 @@ const OBSTACLE_DEF = {
   rail:  { bridgeHalfW: 15, hitRadius: 40, scale: 1 },
 };
 
-const SPAWN_X = W + 90; // aparecen fuera de pantalla, a la derecha
-const DESPAWN_X = -80;
+const SPAWN_X = W + 120; // margen amplio para abismos largos
+const DESPAWN_X = -120;
 
 function createObstaclePool(scene) {
   scene.obstacles = [];
@@ -770,16 +772,19 @@ function spawnObstacle(scene) {
   const phase = getDiffPhase(scene.gameState.elapsed);
   const type = rollObstacleType(phase);
 
-  let lat;
+  let lat, length, hitRadius;
   if (type === 'rail') {
     // El puente puede estar en cualquier posición lateral de la pista
-    lat = Phaser.Math.Between(LAT_MIN + 20, LAT_MAX - 20);
+    lat = Phaser.Math.Between(LAT_MIN + 22, LAT_MAX - 22);
+    // Longitud variable del abismo (entre 55px y 160px)
+    length = Phaser.Math.Between(55, 160);
+    hitRadius = Math.round(length / 2) + 6;
   } else {
     lat = Phaser.Math.Between(LAT_MIN + 10, LAT_MAX - 10);
   }
 
   scene.obstacles.push({
-    type, lat,
+    type, lat, length, hitRadius,
     x: SPAWN_X,
     resolvedP1: false,
     resolvedP2: false,
@@ -822,7 +827,7 @@ function updateObstacles(scene, delta) {
     const def = OBSTACLE_DEF[ob.type];
     if (ob.type === 'hole') drawPothole(gfx, ob.x, y, def.scale);
     else if (ob.type === 'drunk') drawDrunkObstacle(gfx, ob.x, y, def.scale);
-    else if (ob.type === 'rail') drawAbyssBridge(gfx, ob.x, ob.lat, def.scale);
+    else if (ob.type === 'rail') drawAbyssBridge(gfx, ob.x, ob.lat, def.scale, ob.length);
 
     if (ob.x < DESPAWN_X) scene.obstacles.splice(i, 1);
   }
@@ -838,7 +843,8 @@ function checkObstacleProximity(scene, ob, player, flagKey) {
     // El abismo cubre todo el ancho — usar posición en el eje de la pista
     // (ignora offset lateral para que no se pueda esquivar moviéndose de lado)
     const trackX = 400 + player.prog;
-    if (Math.abs(ob.x - trackX) < def.hitRadius) {
+    const hitRadius = ob.hitRadius || def.hitRadius;
+    if (Math.abs(ob.x - trackX) < hitRadius) {
       ob[flagKey] = true;
       resolveObstacleHit(scene, ob, player);
     }
