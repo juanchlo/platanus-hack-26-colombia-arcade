@@ -181,10 +181,9 @@ function createTrack(scene) {
 // Players — Diablito (P1) and Nea (P2)
 // ---------------------------------------------------------------------------
 function createPlayers(scene) {
-  // TODO: draw characters procedurally with Graphics
   scene.players = {
     p1: {
-      x: W / 2 - 80, y: H - 160,
+      x: W / 2 - 80, y: H - 150,
       vx: 0, vy: 0,
       jumping: false, jumpHeld: 0,
       pushing: false,
@@ -192,7 +191,7 @@ function createPlayers(scene) {
       label: 'P1',
     },
     p2: {
-      x: W / 2 + 80, y: H - 160,
+      x: W / 2 + 80, y: H - 150,
       vx: 0, vy: 0,
       jumping: false, jumpHeld: 0,
       pushing: false,
@@ -201,6 +200,15 @@ function createPlayers(scene) {
     },
   };
   scene.playerGraphics = scene.add.graphics();
+  renderPlayers(scene);
+}
+
+function renderPlayers(scene) {
+  const gfx = scene.playerGraphics;
+  gfx.clear();
+  const { p1, p2 } = scene.players;
+  if (p1.alive) drawBeerCrate(gfx, p1.x, p1.y, 3);
+  if (p2.alive) drawBeerCrate(gfx, p2.x, p2.y, 3);
 }
 
 // ---------------------------------------------------------------------------
@@ -232,11 +240,46 @@ function updateHud(scene) {
 // ---------------------------------------------------------------------------
 function createStartScreen(scene) {
   const c = scene.add.container(0, 0).setDepth(20);
-  c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x0a0a1a, 0.95));
-  c.add(scene.add.text(W / 2, 160, 'SAN ANTONIO DRIFT', { fontFamily: 'monospace', fontSize: '36px', color: '#ffdd00', fontStyle: 'bold' }).setOrigin(0.5));
-  c.add(scene.add.text(W / 2, 220, 'Barrio San Antonio · Cali, Colombia', { fontFamily: 'monospace', fontSize: '16px', color: '#aaaaaa' }).setOrigin(0.5));
-  c.add(scene.add.text(W / 2, 340, 'PRESS START', { fontFamily: 'monospace', fontSize: '24px', color: '#ffffff' }).setOrigin(0.5));
-  c.add(scene.add.text(W / 2, H - 30, 'P1: A/D move  U jump  I push     P2: ←/→ move  R jump  T push', { fontFamily: 'monospace', fontSize: '11px', color: '#666666' }).setOrigin(0.5));
+  c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x080810, 0.93));
+
+  c.add(scene.add.text(W / 2, 72, 'PLATANUS HACK 26', {
+    fontFamily: 'monospace', fontSize: '13px', color: '#886600',
+  }).setOrigin(0.5));
+  c.add(scene.add.text(W / 2, 100, 'SAN ANTONIO DRIFT', {
+    fontFamily: 'monospace', fontSize: '40px', color: '#ffdd00', fontStyle: 'bold',
+  }).setOrigin(0.5));
+  c.add(scene.add.text(W / 2, 158, 'BARRIO SAN ANTONIO · CALI, COLOMBIA', {
+    fontFamily: 'monospace', fontSize: '12px', color: '#666644',
+  }).setOrigin(0.5));
+
+  // Crate preview — two crates representing P1 and P2
+  const previewGfx = scene.add.graphics();
+  const crateY = 278;
+  const cx1 = W / 2 - 70;
+  const cx2 = W / 2 + 70;
+  drawBeerCrate(previewGfx, cx1, crateY, 4);
+  drawBeerCrate(previewGfx, cx2, crateY, 4);
+  c.add(previewGfx);
+
+  c.add(scene.add.text(cx1, 230, 'P1', {
+    fontFamily: 'monospace', fontSize: '13px', color: '#ff5555', fontStyle: 'bold',
+  }).setOrigin(0.5));
+  c.add(scene.add.text(cx2, 230, 'P2', {
+    fontFamily: 'monospace', fontSize: '13px', color: '#5599ff', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  const startText = scene.add.text(W / 2, 368, 'PRESS START', {
+    fontFamily: 'monospace', fontSize: '26px', color: '#ffffff', fontStyle: 'bold',
+  }).setOrigin(0.5);
+  c.add(startText);
+  scene.tweens.add({
+    targets: startText, alpha: 0.15, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+  });
+
+  c.add(scene.add.text(W / 2, H - 28, 'P1: A/D mover   U saltar   I empujar     P2: ←/→ mover   R saltar   T empujar', {
+    fontFamily: 'monospace', fontSize: '10px', color: '#444444',
+  }).setOrigin(0.5));
+
   scene.startScreen = c;
 }
 
@@ -336,8 +379,7 @@ function updatePlayers(scene, delta, time) {
   handlePlayerInput(scene, p1, 'P1', dt);
   handlePlayerInput(scene, p2, 'P2', dt);
   resolvePlayerCollision(scene, p1, p2);
-
-  // TODO: draw players via playerGraphics
+  renderPlayers(scene);
 }
 
 function handlePlayerInput(scene, player, prefix, dt) {
@@ -397,6 +439,117 @@ function checkPlayerElimination(scene) {
   if (bothDead) { showGameOver(scene, 'NOBODY'); return; }
   if (p1Dead)  { showGameOver(scene, 'P2'); return; }
   if (p2Dead)  { showGameOver(scene, 'P1'); return; }
+}
+
+// ---------------------------------------------------------------------------
+// Beer crate — 8-bit isometric style (canasta de cervezas)
+//
+// Layout (viewed from front-left at ~30°):
+//   [TOP FACE]   ← parallelogram, lighter red, bottle-slot grid
+//   [FRONT FACE] ← rectangle, medium red, horizontal ribs, handle holes
+//   [RIGHT FACE] ← parallelogram sliver, dark red
+//
+// cx, cy = center of the front face
+// ---------------------------------------------------------------------------
+function drawBeerCrate(gfx, cx, cy, scale) {
+  const s  = scale || 4;
+  const fw = 12 * s;  // front face width
+  const fh =  7 * s;  // front face height
+  const tx =  4 * s;  // isometric x-offset (depth going right)
+  const ty =  4 * s;  // isometric y-offset (depth going up)
+
+  // Corner anchors of the front face
+  const fl = cx - fw / 2;  // left x
+  const fr = cx + fw / 2;  // right x
+  const ft = cy - fh / 2;  // top y
+  const fb = cy + fh / 2;  // bottom y
+
+  // Palette — dark maroon plastic, like the Trougott Simon crate
+  const C_TOP    = 0xd93232;  // top face (sunlit)
+  const C_FRONT  = 0xb82020;  // front face
+  const C_RIGHT  = 0x8a1515;  // right face (shadow)
+  const C_DARK   = 0x3a0808;  // outlines
+  const C_HOLE   = 0x180303;  // handle holes (near black)
+  const C_SHINE  = 0xe84444;  // highlight strip at top of front
+  const C_STRIPE = 0xa51c1c;  // horizontal rib lines
+  const C_DIV    = 0x7a1212;  // bottle divider lines on top face
+
+  // --- RIGHT FACE (drawn first — sits behind front face) ---
+  gfx.fillStyle(C_RIGHT, 1);
+  gfx.fillPoints([
+    { x: fr,      y: ft      },   // top-left  (= front face top-right)
+    { x: fr + tx, y: ft - ty },   // top-right (= top face top-right)
+    { x: fr + tx, y: fb - ty },   // bottom-right
+    { x: fr,      y: fb      },   // bottom-left (= front face bottom-right)
+  ], true);
+
+  // --- TOP FACE ---
+  gfx.fillStyle(C_TOP, 1);
+  gfx.fillPoints([
+    { x: fl,      y: ft      },   // bottom-left  (front face top-left)
+    { x: fr,      y: ft      },   // bottom-right (front face top-right)
+    { x: fr + tx, y: ft - ty },   // top-right
+    { x: fl + tx, y: ft - ty },   // top-left
+  ], true);
+
+  // Bottle slot grid on top face: 2 vertical dividers + 1 horizontal
+  gfx.lineStyle(s, C_DIV, 1);
+  for (let i = 1; i <= 2; i++) {
+    const t = i / 3;
+    // Line runs from front edge → back edge of the parallelogram
+    gfx.lineBetween(
+      fl + t * fw,        ft,
+      fl + tx + t * fw,   ft - ty,
+    );
+  }
+  // Horizontal divider at mid-depth
+  gfx.lineBetween(
+    fl + tx * 0.5,   ft - ty * 0.5,
+    fr + tx * 0.5,   ft - ty * 0.5,
+  );
+
+  // --- FRONT FACE ---
+  gfx.fillStyle(C_FRONT, 1);
+  gfx.fillRect(fl, ft, fw, fh);
+
+  // Horizontal ribs (plastic texture)
+  const nRibs = 5;
+  for (let i = 1; i <= nRibs; i++) {
+    const ry = ft + Math.round(i * fh / (nRibs + 1));
+    gfx.fillStyle(C_STRIPE, 1);
+    gfx.fillRect(fl + s, ry, fw - 2 * s, s);
+  }
+
+  // Handle holes — two rectangular cutouts near top of front face
+  const hw = Math.round(fw * 0.24);
+  const hh = Math.round(fh * 0.30);
+  const hy = ft + Math.round(fh * 0.26);
+  gfx.fillStyle(C_HOLE, 1);
+  gfx.fillRect(fl + s * 2,       hy, hw, hh);  // left hole
+  gfx.fillRect(fr - s * 2 - hw,  hy, hw, hh);  // right hole
+
+  // Thin highlight strip at very top of front face
+  gfx.fillStyle(C_SHINE, 1);
+  gfx.fillRect(fl + s, ft, fw - 2 * s, s);
+
+  // --- OUTLINES ---
+  gfx.lineStyle(s, C_DARK, 1);
+  // Front face border
+  gfx.strokeRect(fl, ft, fw, fh);
+  // Top face border
+  gfx.strokePoints([
+    { x: fl,      y: ft      },
+    { x: fr,      y: ft      },
+    { x: fr + tx, y: ft - ty },
+    { x: fl + tx, y: ft - ty },
+  ], true);
+  // Right face border
+  gfx.strokePoints([
+    { x: fr,      y: ft      },
+    { x: fr + tx, y: ft - ty },
+    { x: fr + tx, y: fb - ty },
+    { x: fr,      y: fb      },
+  ], true);
 }
 
 // ---------------------------------------------------------------------------
