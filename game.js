@@ -1403,11 +1403,10 @@ function updateStartScreen(scene, time) {
     if (scene.startMenuIdx === 0) {
       // 1 JUGADOR (VS CPU)
       scene.gameState.gameMode = '1P';
-      startGame(scene);
+      showHowToPlayScreen(scene);
     } else if (scene.startMenuIdx === 1) {
       // 2 JUGADORES (1 VS 1)
       scene.gameState.gameMode = '2P';
-      startGame(scene);
       showHowToPlayScreen(scene);
     } else if (scene.startMenuIdx === 2) {
       // TABLA DE RÉCORDS
