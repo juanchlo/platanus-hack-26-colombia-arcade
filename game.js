@@ -60,6 +60,20 @@ function consumePressed(code) {
   return false;
 }
 
+// --- Helpers DRY para UI y Polígonos ---
+function txtStyle(size, color, align = 'center') {
+  return { fontFamily: 'monospace', fontSize: size, color: color, fontStyle: 'bold', align: align, stroke: '#000000', strokeThickness: 3 };
+}
+
+function drawPoly(gfx, color, points, lineColor) {
+  gfx.fillStyle(color, 1);
+  gfx.fillPoints(points, true);
+  if (lineColor) {
+    gfx.lineStyle(2, lineColor, 1);
+    gfx.strokePoints(points, true);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Storage helpers
 // ---------------------------------------------------------------------------
@@ -342,135 +356,59 @@ function laneY(x, lat) {
 }
 
 function createTrack(scene) {
-  scene.trackGraphics = scene.add.graphics();
+  scene.backTrackGfx = scene.add.graphics().setDepth(2);
+  scene.frontTrackGfx = scene.add.graphics().setDepth(8);
   renderTrack(scene, 0); // Frame inicial
 }
 
-// ---------------------------------------------------------------------------
-// Track — Asfalto de Cali y Andenes (Mantiene dimensiones y límites intactos)
-// ---------------------------------------------------------------------------
 function renderTrack(scene, distance) {
-  const gfx = scene.trackGraphics;
-  gfx.clear();
+  const bGfx = scene.backTrackGfx;
+  const fGfx = scene.frontTrackGfx;
+  bGfx.clear();
+  fGfx.clear();
 
-  const curbY = trackCurbY;
-  const cliffY = trackCliffY;
+  const curbY = trackCurbY, cliffY = trackCliffY;
+  const leftHillTop = (x) => curbY(x) - 160;
+  const valleyTop = (x) => cliffY(x) + 40;
 
-  // =========================================================================
-  // 1. ZONAS VERDES LATERALES (Líneas divisorias y base para árboles/casas)
-  // =========================================================================
+  // 1. ZONAS VERDES LATERALES (bGfx - Atrás de los jugadores)
+  drawPoly(bGfx, 0x386131, [{x:0, y:curbY(0)}, {x:W, y:curbY(W)}, {x:W, y:leftHillTop(W)}, {x:0, y:leftHillTop(0)}]);
+  bGfx.lineStyle(4, 0x24421e, 1); bGfx.lineBetween(0, leftHillTop(0), W, leftHillTop(W));
   
-  // -- Ladera Izquierda (Zanja/Pastizal oscuro) --
-  const leftHillTop = (x) => curbY(x) - 160; 
-  gfx.fillStyle(0x386131, 1);
-  gfx.fillPoints([
-    {x: 0, y: curbY(0)}, {x: W, y: curbY(W)},
-    {x: W, y: leftHillTop(W)}, {x: 0, y: leftHillTop(0)}
-  ], true);
-  gfx.lineStyle(4, 0x24421e, 1);
-  gfx.lineBetween(0, leftHillTop(0), W, leftHillTop(W));
+  drawPoly(bGfx, 0x5c483a, [{x:0, y:cliffY(0)}, {x:W, y:cliffY(W)}, {x:W, y:valleyTop(W)}, {x:0, y:valleyTop(0)}]);
+  drawPoly(bGfx, 0x4a7c44, [{x:0, y:valleyTop(0)}, {x:W, y:valleyTop(W)}, {x:W, y:H}, {x:0, y:H}]);
+  bGfx.lineStyle(4, 0x2e5429, 1); bGfx.lineBetween(0, valleyTop(0), W, valleyTop(W));
 
-  // -- Valle Derecho (Pastizal y desnivel) --
-  const valleyTop = (x) => cliffY(x) + 40; 
-  gfx.fillStyle(0x5c483a, 1); // Talud de tierra
-  gfx.fillPoints([
-    {x: 0, y: cliffY(0)}, {x: W, y: cliffY(W)},
-    {x: W, y: valleyTop(W)}, {x: 0, y: valleyTop(0)}
-  ], true);
-  
-  gfx.fillStyle(0x4a7c44, 1); // Suelo del valle
-  gfx.fillPoints([
-    {x: 0, y: valleyTop(0)}, {x: W, y: valleyTop(W)},
-    {x: W, y: H}, {x: 0, y: H}
-  ], true);
-  gfx.lineStyle(4, 0x2e5429, 1);
-  gfx.lineBetween(0, valleyTop(0), W, valleyTop(W));
+  // 2. ASFALTO (bGfx)
+  drawPoly(bGfx, 0x2a2a30, [{x:0, y:curbY(0)}, {x:W, y:curbY(W)}, {x:W, y:cliffY(W)}, {x:0, y:cliffY(0)}]);
 
-  // =========================================================================
-  // 2. PISTA DE ASFALTO (Franja ancha de color gris oscuro)
-  // =========================================================================
-  gfx.fillStyle(0x2a2a30, 1); // Gris oscuro asfalto
-  gfx.fillPoints([
-    {x: 0, y: curbY(0)}, {x: W, y: curbY(W)},
-    {x: W, y: cliffY(W)}, {x: 0, y: cliffY(0)}
-  ], true);
-
-  // =========================================================================
-  // 3. ANDENES / ACERAS (Bordes de color gris claro)
-  // =========================================================================
-  const sSpace = 120;
-  let sOff = distance % sSpace;
-  for (let x = W + sSpace - sOff; x > -sSpace; x -= sSpace) {
-    let nextX = x - sSpace;
-    // Andén superior (Izquierdo)
-    gfx.fillStyle(0xdcdfe2, 1);
-    gfx.fillPoints([
-      {x: x, y: curbY(x)}, {x: nextX, y: curbY(nextX)},
-      {x: nextX, y: curbY(nextX) - 16}, {x: x, y: curbY(x) - 16}
-    ], true);
-    // Cantodefinitorio del andén
-    gfx.fillStyle(0x9aa0a6, 1);
-    gfx.fillPoints([
-      {x: x, y: curbY(x)}, {x: nextX, y: curbY(nextX)},
-      {x: nextX, y: curbY(nextX) - 4}, {x: x, y: curbY(x) - 4}
-    ], true);
+  // 3 y 4. ANDENES Y TEXTURA DE ASFALTO
+  const sSpace = 120, lSpace = 160, objSpace = 100;
+  for (let x = W + sSpace - (distance % sSpace); x > -sSpace; x -= sSpace) {
+    let nx = x - sSpace;
+    drawPoly(bGfx, 0xdcdfe2, [{x:x, y:curbY(x)}, {x:nx, y:curbY(nx)}, {x:nx, y:curbY(nx)-16}, {x:x, y:curbY(x)-16}]);
+    drawPoly(bGfx, 0x9aa0a6, [{x:x, y:curbY(x)}, {x:nx, y:curbY(nx)}, {x:nx, y:curbY(nx)-4}, {x:x, y:curbY(x)-4}]);
   }
 
-  // =========================================================================
-  // 4. TEXTURA DEL ASFALTO (Manchas y grietas sin colisiones)
-  // =========================================================================
-  const lSpace = 160;
-  let lOff = distance % lSpace;
-  for (let x = W + lSpace - lOff; x > -lSpace; x -= lSpace) {
-    let y = (curbY(x) + cliffY(x)) / 2;
-    let roadWidth = cliffY(x) - curbY(x);
-    
-    // Manchas oscuras y grietas dinámicas dispersas en el asfalto
-    gfx.fillStyle(0x1a1a20, 0.6);
-    gfx.fillRect(x - 30, y - roadWidth * 0.25, 45, 12);
-    gfx.fillRect(x - 80, y + roadWidth * 0.2, 35, 15);
-    
-    // Pequeños polígonos/grietas oscuras simulando parches en la vía
-    gfx.fillStyle(0x111115, 0.8);
-    gfx.fillPoints([
-      {x: x - 20, y: y}, {x: x - 35, y: y - 8}, {x: x - 15, y: y - 14}
-    ], true);
+  for (let x = W + lSpace - (distance % lSpace); x > -lSpace; x -= lSpace) {
+    let y = (curbY(x) + cliffY(x)) / 2, rw = cliffY(x) - curbY(x);
+    bGfx.fillStyle(0x1a1a20, 0.6); bGfx.fillRect(x-30, y-rw*0.25, 45, 12); bGfx.fillRect(x-80, y+rw*0.2, 35, 15);
+    drawPoly(bGfx, 0x111115, [{x:x-20, y:y}, {x:x-35, y:y-8}, {x:x-15, y:y-14}]);
   }
 
-  // =========================================================================
-  // 5. GENERADOR PROCEDURAL DE CASAS Y ÁRBOLES (Escalas 6.5 y 5.5)
-  // =========================================================================
-  const objSpace = 100;
-  let objOff = distance % objSpace;
-  const startX = -objSpace - objOff;
-  const endX = W + objSpace;
-
-  for (let x = startX; x <= endX; x += objSpace) {
-    let worldId = Math.floor((x + distance) / objSpace);
+  // 5. DIVISIÓN DEL PROCEDURAL: Ladera al Fondo, Valle al Frente
+  for (let x = -objSpace - (distance % objSpace); x <= W + objSpace; x += objSpace) {
+    let wId = Math.floor((x + distance) / objSpace);
+    let r1 = Math.abs(Math.sin(wId * 12.9898) * 43758.5453) % 1, r2 = Math.abs(Math.cos(wId * 4.1415) * 43758.5453) % 1;
     
-    let rand1 = Math.abs(Math.sin(worldId * 12.9898) * 43758.5453) % 1;
-    let rand2 = Math.abs(Math.cos(worldId * 4.1415) * 43758.5453) % 1;
-    
-    // --- Lado Izquierdo (Ladera superior) ---
-    if (rand1 > 0.35) {
-      let y_house = curbY(x) - 10 - rand2 * 40;
-      let y_tree = curbY(x) - 60 - rand2 * 80;
-      if (rand1 > 0.9) {
-        drawIsoHouse(gfx, x, y_house, 6.5, worldId % 2 !== 0);
-      } else {
-        drawIsoTree(gfx, x, y_tree, 5.5);
-      }
+    if (r1 > 0.35) {
+      if (r1 > 0.9) drawIsoHouse(bGfx, x, curbY(x) - 10 - r2 * 40, 6.5, wId % 2 !== 0);
+      else drawIsoTree(bGfx, x, curbY(x) - 60 - r2 * 80, 5.5);
     }
     
-    // --- Lado Derecho (Valle inferior) ---
-    if (rand2 > 0.25) {
-      let y_house = cliffY(x) + 100 + rand1 * 50;
-      let y_tree = cliffY(x) + 70 + rand1 * 100;
-      if (rand2 > 0.85) {
-        drawIsoHouse(gfx, x-10, y_house, 6.5, worldId % 2 === 0);
-      } else {
-        drawIsoTree(gfx, x, y_tree, 5.5);
-      }
+    if (r2 > 0.25) {
+      if (r2 > 0.85) drawIsoHouse(fGfx, x-10, cliffY(x) + 100 + r1 * 50, 6.5, wId % 2 === 0);
+      else drawIsoTree(fGfx, x, cliffY(x) + 70 + r1 * 100, 5.5);
     }
   }
 }
@@ -673,171 +611,56 @@ function renderOnePlayer(gfx, player, time, speed, scene) {
   else drawChango(gfx, player.x, charY, 3, time, speed, charJZ, player._wF, pushDir);
 }
 
-// ---------------------------------------------------------------------------
-// Procedural Assets (Casas y Árboles en perspectiva Isométrica 2:1)
-// ---------------------------------------------------------------------------
-// Función maestra para dibujar bloques isométricos 8-bits
 function drawIsoBlock(gfx, cx, cy, w, d, h, cFront, cSide, cTop, cLine) {
-  const tyL = w * 0.5; // Inclinación izquierda
-  const tyR = d * 0.5; // Inclinación derecha
-
-  // Lado derecho (Sombra)
-  gfx.fillStyle(cSide, 1);
-  gfx.fillPoints([{x:cx, y:cy}, {x:cx+d, y:cy-tyR}, {x:cx+d, y:cy-tyR-h}, {x:cx, y:cy-h}], true);
-
-  // Lado frontal/izquierdo (Luz)
-  gfx.fillStyle(cFront, 1);
-  gfx.fillPoints([{x:cx, y:cy}, {x:cx-w, y:cy-tyL}, {x:cx-w, y:cy-tyL-h}, {x:cx, y:cy-h}], true);
-
-  // Arriba (Luz superior)
-  gfx.fillStyle(cTop, 1);
-  gfx.fillPoints([{x:cx, y:cy-h}, {x:cx-w, y:cy-tyL-h}, {x:cx-w+d, y:cy-tyL-tyR-h}, {x:cx+d, y:cy-tyR-h}], true);
-
-  // Bordes (Estilo pixel art)
+  const tyL = w * 0.5, tyR = d * 0.5;
+  drawPoly(gfx, cSide, [{x:cx,y:cy}, {x:cx+d,y:cy-tyR}, {x:cx+d,y:cy-tyR-h}, {x:cx,y:cy-h}]);
+  drawPoly(gfx, cFront, [{x:cx,y:cy}, {x:cx-w,y:cy-tyL}, {x:cx-w,y:cy-tyL-h}, {x:cx,y:cy-h}]);
+  drawPoly(gfx, cTop, [{x:cx,y:cy-h}, {x:cx-w,y:cy-tyL-h}, {x:cx-w+d,y:cy-tyL-tyR-h}, {x:cx+d,y:cy-tyR-h}]);
   if (cLine) {
     gfx.lineStyle(2, cLine, 1);
-    // Contorno exterior y aristas visibles
-    gfx.strokePoints([{x:cx-w, y:cy-tyL}, {x:cx, y:cy}, {x:cx+d, y:cy-tyR}, {x:cx+d, y:cy-tyR-h}, {x:cx-w+d, y:cy-tyL-tyR-h}, {x:cx-w, y:cy-tyL-h}], true);
-    gfx.lineBetween(cx, cy, cx, cy-h); // Arista central
-    gfx.lineBetween(cx-w, cy-tyL-h, cx, cy-h); // Arista superior izq
-    gfx.lineBetween(cx+d, cy-tyR-h, cx, cy-h); // Arista superior der
+    gfx.strokePoints([{x:cx-w,y:cy-tyL},{x:cx,y:cy},{x:cx+d,y:cy-tyR},{x:cx+d,y:cy-tyR-h},{x:cx-w+d,y:cy-tyL-tyR-h},{x:cx-w,y:cy-tyL-h}], true);
+    gfx.lineBetween(cx, cy, cx, cy-h); gfx.lineBetween(cx-w, cy-tyL-h, cx, cy-h); gfx.lineBetween(cx+d, cy-tyR-h, cx, cy-h);
   }
 }
 
-function drawIsoTree(gfx, cx, cy, scale) {
-  const s = scale || 2;
-  // Sombra
-  gfx.fillStyle(0x000000, 0.2);
-  gfx.fillEllipse(cx, cy, 14 * s, 7 * s);
-
-  // Tronco
-  gfx.fillStyle(0x4a2e1b, 1);
-  gfx.fillRect(cx - 2 * s, cy - 8 * s, 4 * s, 8 * s);
-  
-  // Hojas (Generador de bloques isométricos apilados)
-  const drawBlock = (bx, by, bw, cTop, cLeft, cRight) => {
-    const ty = bw * 0.5; // La magia de la pendiente 0.5
-    gfx.fillStyle(cLeft, 1);
-    gfx.fillPoints([{x:bx, y:by}, {x:bx-bw, y:by-ty}, {x:bx-bw, y:by-ty-bw}, {x:bx, y:by-bw}], true);
-    gfx.fillStyle(cRight, 1);
-    gfx.fillPoints([{x:bx, y:by}, {x:bx+bw, y:by-ty}, {x:bx+bw, y:by-ty-bw}, {x:bx, y:by-bw}], true);
-    gfx.fillStyle(cTop, 1);
-    gfx.fillPoints([{x:bx, y:by-bw}, {x:bx-bw, y:by-ty-bw}, {x:bx, y:by-ty*2-bw}, {x:bx+bw, y:by-ty-bw}], true);
-  };
-  
-  // Dos capas de hojas formando la copa
-  drawBlock(cx, cy - 6 * s, 9 * s, 0x3d7035, 0x2e5928, 0x1f3d1b);
-  drawBlock(cx, cy - 13 * s, 6 * s, 0x4a8540, 0x3d7035, 0x2e5928);
+function drawIsoTree(gfx, cx, cy, scale = 2) {
+  gfx.fillStyle(0x000000, 0.2); gfx.fillEllipse(cx, cy, 14*scale, 7*scale);
+  gfx.fillStyle(0x4a2e1b, 1); gfx.fillRect(cx - 2*scale, cy - 8*scale, 4*scale, 8*scale);
+  drawIsoBlock(gfx, cx, cy - 6*scale, 9*scale, 9*scale, 9*scale, 0x2e5928, 0x1f3d1b, 0x3d7035);
+  drawIsoBlock(gfx, cx, cy - 13*scale, 6*scale, 6*scale, 6*scale, 0x3d7035, 0x2e5928, 0x4a8540);
 }
 
-function drawIsoHouse(gfx, cx, cy, scale, isAltColor) {
-  const s = scale || 2.5;
-  const fw = 14 * s; // Ancho cara izquierda
-  const dw = 12 * s; // Ancho cara derecha
-  const h  = 12 * s; // Altura
-  const tyL = fw * 0.5; 
-  const tyR = dw * 0.5;
-  
-  // Paletas intercambiables (Casas coloniales coloridas)
-  const cFront = isAltColor ? 0xd95a53 : 0xeaddcf; 
-  const cSide  = isAltColor ? 0xa8413b : 0xbfb4a8;
-  const cRoof  = 0x3a3a3a;
-  
-  // Pared Izquierda
-  gfx.fillStyle(cFront, 1);
-  gfx.fillPoints([{x:cx, y:cy}, {x:cx-fw, y:cy-tyL}, {x:cx-fw, y:cy-tyL-h}, {x:cx, y:cy-h}], true);
-  
-  // Pared Derecha
-  gfx.fillStyle(cSide, 1);
-  gfx.fillPoints([{x:cx, y:cy}, {x:cx+dw, y:cy-tyR}, {x:cx+dw, y:cy-tyR-h}, {x:cx, y:cy-h}], true);
-  
-  // Techo (Plano para estilo cubo 8-bits)
-  gfx.fillStyle(cRoof, 1);
-  gfx.fillPoints([{x:cx, y:cy-h}, {x:cx-fw, y:cy-tyL-h}, {x:cx-fw+dw, y:cy-tyL-tyR-h}, {x:cx+dw, y:cy-tyR-h}], true);
-  
-  // Puerta Isométrica (Cara izquierda)
-  gfx.fillStyle(0x3d2314, 1);
-  gfx.fillPoints([
-    {x:cx-3*s, y:cy-1.5*s}, {x:cx-7*s, y:cy-3.5*s}, 
-    {x:cx-7*s, y:cy-3.5*s-6*s}, {x:cx-3*s, y:cy-1.5*s-6*s}
-  ], true);
-
-  // Ventana Isométrica (Cara derecha)
-  gfx.fillStyle(0x112233, 1);
-  gfx.fillPoints([
-    {x:cx+3*s, y:cy-1.5*s-4*s}, {x:cx+7*s, y:cy-3.5*s-4*s}, 
-    {x:cx+7*s, y:cy-3.5*s-7*s}, {x:cx+3*s, y:cy-1.5*s-7*s}
-  ], true);
+function drawIsoHouse(gfx, cx, cy, scale = 2.5, isAltColor) {
+  const s = scale, fw = 14*s, dw = 12*s, h = 12*s;
+  drawIsoBlock(gfx, cx, cy, fw, dw, h, isAltColor ? 0xd95a53 : 0xeaddcf, isAltColor ? 0xa8413b : 0xbfb4a8, 0x3a3a3a);
+  drawPoly(gfx, 0x3d2314, [{x:cx-3*s, y:cy-1.5*s}, {x:cx-7*s, y:cy-3.5*s}, {x:cx-7*s, y:cy-3.5*s-6*s}, {x:cx-3*s, y:cy-1.5*s-6*s}]);
+  drawPoly(gfx, 0x112233, [{x:cx+3*s, y:cy-1.5*s-4*s}, {x:cx+7*s, y:cy-3.5*s-4*s}, {x:cx+7*s, y:cy-3.5*s-7*s}, {x:cx+3*s, y:cy-1.5*s-7*s}]);
 }
 
-function drawIsoCross(gfx, cx, cy, scale) {
-  const s = scale || 2;
-  const cF = 0xcccccc; // Gris claro (Frente)
-  const cS = 0x888899; // Gris oscuro (Lado)
-  const cT = 0xeeeeee; // Blanco/Gris muy claro (Arriba)
-  const cL = 0x222222; // Borde negro
-
-  // Se dibuja de abajo hacia arriba para respetar el Z-Index
-  // 1. Pilar inferior
+function drawIsoCross(gfx, cx, cy, scale = 2) {
+  const s = scale, cF = 0xcccccc, cS = 0x888899, cT = 0xeeeeee, cL = 0x222222;
   drawIsoBlock(gfx, cx, cy, 4*s, 4*s, 16*s, cF, cS, cT, cL);
-  
-  // 2. Brazo horizontal (Atraviesa el pilar)
-  // Desplazamos el ancla (cx, cy) hacia arriba y a la izquierda para centrar el brazo
-  const bx = cx + 7*s;
-  const by = cy - 7*s - (6*s * 0.5);
-  drawIsoBlock(gfx, bx, by, 16*s, 4*s, 4*s, cF, cS, cT, cL);
-  
-  // 3. Pilar superior
-  const tx = cx;
-  const ty = cy - 20*s;
-  drawIsoBlock(gfx, tx, ty, 4*s, 4*s, 8*s, cF, cS, cT, cL);
+  drawIsoBlock(gfx, cx + 7*s, cy - 10*s, 16*s, 4*s, 4*s, cF, cS, cT, cL);
+  drawIsoBlock(gfx, cx, cy - 20*s, 4*s, 4*s, 8*s, cF, cS, cT, cL);
 }
 
-function drawIsoChurch(gfx, cx, cy, scale) {
-  const s = scale || 2.5;
-  const cWallF = 0xf0f0f0; // Pared blanca
-  const cWallS = 0xa0a0a8; // Pared sombra
-  const cRoofF = 0x8c4c3e; // Techo terracota claro
-  const cRoofS = 0x5e332a; // Techo terracota oscuro
-  const cLine  = 0x222222;
-
-  // 1. NAVE CENTRAL (Edificio principal atrás)
-  const nx = cx + 15*s;
-  const ny = cy - 10*s;
+function drawIsoChurch(gfx, cx, cy, scale = 2.5) {
+  const s = scale, nx = cx + 15*s, ny = cy - 10*s, cWallF = 0xf0f0f0, cWallS = 0xa0a0a8, cLine = 0x222222;
   drawIsoBlock(gfx, nx, ny, 25*s, 20*s, 18*s, cWallF, cWallS, 0xdddddd, cLine);
+  drawPoly(gfx, 0x8c4c3e, [{x:nx, y:ny-18*s}, {x:nx-25*s, y:ny-30.5*s}, {x:nx-12.5*s, y:ny-36.25*s}]);
+  drawPoly(gfx, 0x5e332a, [{x:nx, y:ny-18*s}, {x:nx-12.5*s, y:ny-36.25*s}, {x:nx+7.5*s, y:ny-46.25*s}, {x:nx+20*s, y:ny-28*s}]);
   
-  // Techo a dos aguas de la nave (Construido con polígonos manuales por la inclinación)
-  const rH = 12*s;
-  gfx.fillStyle(cRoofF, 1);
-  gfx.fillPoints([{x:nx, y:ny-18*s}, {x:nx-25*s, y:ny-12.5*s-18*s}, {x:nx-12.5*s, y:ny-6.25*s-18*s-rH}], true);
-  gfx.fillStyle(cRoofS, 1);
-  gfx.fillPoints([{x:nx, y:ny-18*s}, {x:nx-12.5*s, y:ny-6.25*s-18*s-rH}, {x:nx-12.5*s+20*s, y:ny-6.25*s-10*s-18*s-rH}, {x:nx+20*s, y:ny-10*s-18*s}], true);
-  
-  // 2. TORRE FRONTAL
   drawIsoBlock(gfx, cx, cy, 14*s, 14*s, 35*s, cWallF, cWallS, 0xdddddd, cLine);
-  
-  // Puerta de la torre (Doble hoja de madera)
-  gfx.fillStyle(0x5e332a, 1);
-  gfx.fillPoints([{x:cx-3*s, y:cy-1.5*s}, {x:cx-11*s, y:cy-5.5*s}, {x:cx-11*s, y:cy-5.5*s-10*s}, {x:cx-3*s, y:cy-1.5*s-10*s}], true);
-  gfx.lineStyle(1.5, cLine, 1);
-  gfx.lineBetween(cx-7*s, cy-3.5*s, cx-7*s, cy-3.5*s-10*s); // División de la puerta
+  drawPoly(gfx, 0x5e332a, [{x:cx-3*s,y:cy-1.5*s},{x:cx-11*s,y:cy-5.5*s},{x:cx-11*s,y:cy-15.5*s},{x:cx-3*s,y:cy-11.5*s}]);
+  gfx.lineStyle(1.5, cLine, 1); gfx.lineBetween(cx-7*s, cy-3.5*s, cx-7*s, cy-13.5*s);
+  [15, 25].forEach(yOff => drawPoly(gfx, 0x336699, [{x:cx-4*s,y:cy-2*s-yOff},{x:cx-10*s,y:cy-5*s-yOff},{x:cx-10*s,y:cy-12*s-yOff},{x:cx-4*s,y:cy-9*s-yOff}]));
 
-  // Ventanas altas de la torre (Cristal azul)
-  gfx.fillStyle(0x336699, 1);
-  gfx.fillPoints([{x:cx-4*s, y:cy-2*s-15*s}, {x:cx-10*s, y:cy-5*s-15*s}, {x:cx-10*s, y:cy-5*s-22*s}, {x:cx-4*s, y:cy-2*s-22*s}], true);
-  gfx.fillPoints([{x:cx-4*s, y:cy-2*s-25*s}, {x:cx-10*s, y:cy-5*s-25*s}, {x:cx-10*s, y:cy-5*s-32*s}, {x:cx-4*s, y:cy-2*s-32*s}], true);
-
-  // 3. TECHO ESCALONADO DE LA TORRE (El sello visual de tu referencia)
   let tw = 14*s, td = 14*s, ty = cy - 35*s, tx = cx;
   for(let i=0; i<4; i++) {
-    drawIsoBlock(gfx, tx, ty, tw, td, 4*s, cRoofF, cRoofS, cRoofF, cLine);
-    // Reducir dimensiones y subir para el siguiente escalón
-    tw -= 3*s; td -= 3*s;
-    tx -= 1.5*s; // Mantener centrado visualmente
-    ty -= 4*s + (1.5*s * 0.5); // Subir altura + offset isométrico
+    drawIsoBlock(gfx, tx, ty, tw, td, 4*s, 0x8c4c3e, 0x5e332a, 0x8c4c3e, cLine);
+    tw -= 3*s; td -= 3*s; tx -= 1.5*s; ty -= 4.75*s;
   }
 }
-
 // ---------------------------------------------------------------------------
 // Obstacles — huecos (small), borrachos/botellas (large) y baranda de drift
 // ---------------------------------------------------------------------------
