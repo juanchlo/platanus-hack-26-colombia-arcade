@@ -598,6 +598,7 @@ function createPlayers(scene) {
       score: 0,
       jumping: false, jumpTimer: 0, jumpLanding: false, landTimer: 0, landStartZ: 0, jumpZ: 0,
       pushing: false,
+      pushCooldown: 0,
       paralyzed: 0,
       knockbackVel: 0,
       alive: true,
@@ -610,6 +611,7 @@ function createPlayers(scene) {
       score: 0,
       jumping: false, jumpTimer: 0, jumpLanding: false, landTimer: 0, landStartZ: 0, jumpZ: 0,
       pushing: false,
+      pushCooldown: 0,
       paralyzed: 0,
       knockbackVel: 0,
       alive: true,
@@ -1915,6 +1917,7 @@ function startGame(scene) {
     player.prog = 0;
     player.paralyzed = 0;
     player.knockbackVel = 0;
+    player.pushCooldown = 0;
     player._wF = 0.0008;
     player._pushT = null;
   }
@@ -2003,6 +2006,10 @@ function updatePlayers(scene, delta, time) {
 function updateCpuPlayer(scene, cpu, dt, time) {
   if (!cpu.alive) return;
 
+  if (cpu.pushCooldown > 0) {
+    cpu.pushCooldown = Math.max(0, cpu.pushCooldown - dt);
+  }
+
   if (cpu.paralyzed > 0) {
     cpu.paralyzed = Math.max(0, cpu.paralyzed - dt);
     if (cpu.knockbackVel > 0) {
@@ -2054,6 +2061,23 @@ function updateCpuPlayer(scene, cpu, dt, time) {
   const baseY = baseX * 0.5 + 225;
   cpu.x = baseX + cpu.lat * (-2) + cpu.prog * 1;
   cpu.y = baseY + cpu.lat * 1 + cpu.prog * 0.5;
+
+  // Oportunidad de empujar a P1 si está cerca y cooldown disponible
+  const p1 = scene.players.p1;
+  if (p1 && p1.alive && (!cpu.pushCooldown || cpu.pushCooldown <= 0)) {
+    const dLat = cpu.lat - p1.lat;
+    const dProg = cpu.prog - p1.prog;
+    if (Math.abs(dLat) < 50 && Math.abs(dProg) < 50 && Math.random() < (0.6 * dt)) {
+      cpu.pushCooldown = 1.6;
+      const pushDir = dLat >= 0 ? -1 : 1;
+      p1.lat = Phaser.Math.Clamp(p1.lat + pushDir * 38, LAT_MIN, LAT_MAX);
+      p1.paralyzed = 0.35;
+      cpu.score += 200;
+      cpu._pushT = scene.time.now;
+      cpu._pushDir = p1.x >= cpu.x ? 1 : -1;
+      showScorePopup(scene, cpu.x, cpu.y - 35, '¡EMPUJÓN CPU!', '#ff44aa');
+    }
+  }
 
   // Salto de la CPU
   if (wantsJump && !cpu.jumping) {
@@ -2200,8 +2224,15 @@ function handlePlayerInput(scene, player, prefix, dt) {
     }
   }
 
-  // --- Empuje (Push) con botón de acción 2 ('I' para P1, 'T' para P2) ---
-  if (consumePressed(prefix + '_2') && player.paralyzed <= 0) {
+  // Disminuir cooldown de empuje con el tiempo
+  if (player.pushCooldown > 0) {
+    player.pushCooldown = Math.max(0, player.pushCooldown - dt);
+  }
+
+  // --- Empuje (Push) con botón de acción 2 ('I' para P1, 'T' para P2) con cooldown respetable ---
+  const PUSH_COOLDOWN = 1.0; // Cooldown de 1.0s para evitar spam manteniendo la fluidez
+  if (consumePressed(prefix + '_2') && player.paralyzed <= 0 && (!player.pushCooldown || player.pushCooldown <= 0)) {
+    player.pushCooldown = PUSH_COOLDOWN;
     const opp = (prefix === 'P1') ? scene.players.p2 : scene.players.p1;
     if (opp && opp.alive) {
       const dLat = player.lat - opp.lat;
@@ -2215,7 +2246,14 @@ function handlePlayerInput(scene, player, prefix, dt) {
         player._pushDir = opp.x >= player.x ? 1 : -1;
         A.sfx('hit');
         showScorePopup(scene, player.x, player.y - 35, '+200 EMPUJÓN!', '#ff44aa');
+      } else {
+        // Intento al aire: dispara la animación de empuje de brazos
+        player._pushT = scene.time.now;
+        player._pushDir = player.lat >= 0 ? -1 : 1;
       }
+    } else {
+      player._pushT = scene.time.now;
+      player._pushDir = player.lat >= 0 ? -1 : 1;
     }
   }
 }
