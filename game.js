@@ -1280,17 +1280,17 @@ function createHowToPlayScreen(scene) {
     fontFamily: 'monospace', fontSize: (sz || 15) + 'px', color: col || '#ffffff',
   }).setOrigin(0.5);
 
-  const lh = 26; // line height
+  const lh = 46; // line height (aumentado para acomodar líneas dobles)
   const p1Lines = [
     t(cx1, 268, 'NEA  —  P1', '#ff6666', 17),
-    t(cx1, 268 + lh,     '↑↓←→ Mover   W/A/S/D', '#cccccc'),
-    t(cx1, 268 + lh * 2, 'Saltar:  U  (mantener = largo)', '#cccccc'),
+    t(cx1, 268 + lh,     '↑↓←→ Mover\nW / A / S / D', '#cccccc'),
+    t(cx1, 268 + lh * 2, 'Saltar: U\n(mantener = largo)', '#cccccc'),
     t(cx1, 268 + lh * 3, 'Empujar: I', '#cccccc'),
   ];
   const p2Lines = [
     t(cx2, 268, 'CHANGÓ  —  P2', '#6699ff', 17),
-    t(cx2, 268 + lh,     '↑↓←→ Mover   ↑/↓/←/→', '#cccccc'),
-    t(cx2, 268 + lh * 2, 'Saltar:  R  (mantener = largo)', '#cccccc'),
+    t(cx2, 268 + lh,     '↑↓←→ Mover\n↑ / ↓ / ← / →', '#cccccc'),
+    t(cx2, 268 + lh * 2, 'Saltar: R\n(mantener = largo)', '#cccccc'),
     t(cx2, 268 + lh * 3, 'Empujar: T', '#cccccc'),
   ];
 
