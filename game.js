@@ -1714,10 +1714,10 @@ function startGame(scene) {
   scene.players.p1.x = W / 2 - 80;
   scene.players.p2.x = W / 2 + 80;
 
-  // if (!scene.gameState.musicStarted) {
-  //   startMusic(scene);
-  //   scene.gameState.musicStarted = true;
-  // }
+  if (!scene.gameState.musicStarted) {
+    startMusic(scene);
+    scene.gameState.musicStarted = true;
+  }
 }
 
 function resetGame(scene) {
@@ -2547,19 +2547,41 @@ function drawBeerCrate(gfx, cx, cy, scale) {
 // Music — 8-bit Cali salsa via Web Audio API
 // ---------------------------------------------------------------------------
 function startMusic(scene) {
-  // TODO: implement salsa caleña 8-bit loop with AudioContext oscillators
   try {
     const ctx = scene.sound.context;
     if (!ctx) return;
-    // Placeholder: single chord drone to confirm audio works
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.value = 220;
-    gain.gain.value = 0.03;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    // Will be replaced with full salsa arrangement
-  } catch (_) {}
+    // Cm scale: C3 Eb3 F3 G3 Ab3 Bb3 C4 Eb4
+    const N=[130.81,155.56,174.61,196,207.65,233.08,261.63,311.13];
+    // Bass tumbao 2-bar (16 eighth notes, -1=rest)
+    const B=[0,0,-1,1,3,-1,4,3, 5,-1,0,3,1,-1,0,-1];
+    // Montuno melody (played *2 = octave up)
+    const M=[-1,6,7,-1,6,5,-1,6, -1,7,-1,6,5,-1,4,-1];
+    // Clave 3-2
+    const K=[1,0,0,1,0,1,0,0, 0,1,0,0,1,0,0,0];
+    // Cowbell on beats 2 and 4
+    const W=[0,0,0,0,1,0,0,0, 0,0,0,0,1,0,0,0];
+    const stp=60/185/2; // 8th note at 185 bpm
+    const mx=ctx.createGain();
+    mx.gain.value=0.11;
+    mx.connect(ctx.destination);
+    const pl=(f,tp,v,t,d)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type=tp;o.frequency.value=f;
+      g.gain.setValueAtTime(v,t);
+      g.gain.exponentialRampToValueAtTime(0.001,t+d);
+      o.connect(g);g.connect(mx);o.start(t);o.stop(t+d);
+    };
+    const loop=()=>{
+      const t0=ctx.currentTime+0.03;
+      for(let i=0;i<16;i++){
+        const t=t0+i*stp;
+        if(B[i]>=0)pl(N[B[i]],'square',0.45,t,stp*0.65);
+        if(M[i]>=0)pl(N[M[i]]*2,'triangle',0.22,t,stp*0.5);
+        if(K[i])pl(900,'square',0.1,t,0.025);
+        if(W[i])pl(550,'square',0.08,t,0.04);
+      }
+      scene._mt=setTimeout(loop,stp*16000);
+    };
+    loop();
+  } catch(_){}
 }
