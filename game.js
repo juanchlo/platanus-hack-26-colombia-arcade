@@ -75,6 +75,63 @@ function drawPoly(gfx, color, points, lineColor) {
 }
 
 // ---------------------------------------------------------------------------
+// Audio Engine (Procedural 8-bit Synth)
+// ---------------------------------------------------------------------------
+const A = {
+  ctx: null, master: null, noise: null, on: false,
+  init() {
+    if (this.on) return;
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.4; // Volumen general
+      this.master.connect(this.ctx.destination);
+      // Generar buffer de ruido blanco una sola vez
+      const len = this.ctx.sampleRate;
+      this.noise = this.ctx.createBuffer(1, len, len);
+      const b = this.noise.getChannelData(0);
+      for (let i = 0; i < len; i++) b[i] = Math.random() * 2 - 1;
+      this.on = true;
+    } catch (e) {}
+  },
+  tone(freq, dur, type, vol, sweepTo, delay = 0) {
+    if (!this.on) return;
+    const t = this.ctx.currentTime + delay, osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(freq, t);
+    if (sweepTo) osc.frequency.exponentialRampToValueAtTime(sweepTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g); g.connect(this.master);
+    osc.start(t); osc.stop(t + dur + 0.05);
+  },
+  noiseFx(dur, vol, freq, q, type, delay = 0) {
+    if (!this.on) return;
+    const t = this.ctx.currentTime + delay, src = this.ctx.createBufferSource(), f = this.ctx.createBiquadFilter(), g = this.ctx.createGain();
+    src.buffer = this.noise;
+    f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(this.master);
+    src.start(t); src.stop(t + dur + 0.05);
+  },
+  sfx(kind) {
+    if (!this.on) this.init();
+    if (!this.on) return;
+    if (kind === 'jump') {
+      this.tone(150, 0.25, 'square', 0.15, 600); // Sweep hacia arriba (estilo Mario)
+    } else if (kind === 'hit') {
+      this.tone(300, 0.1, 'sawtooth', 0.2, 100);
+      this.noiseFx(0.1, 0.3, 1000, 1, 'highpass'); // Impacto seco
+    } else if (kind === 'crash') {
+      this.tone(180, 0.4, 'sawtooth', 0.3, 40);
+      this.noiseFx(0.3, 0.4, 300, 0.5, 'lowpass'); // Golpe sordo y grave
+    } else if (kind === 'drift') {
+      this.noiseFx(0.15, 0.1, 2000, 2, 'bandpass'); // Fricción aguda (chillido de llanta)
+    } else if (kind === 'win') {
+      [392, 523, 659, 783].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.2, f, i * 0.1)); // Arpegio feliz
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
 // Storage helpers
 // ---------------------------------------------------------------------------
 function getStorage() {
@@ -1118,6 +1175,7 @@ function checkObstacleProximity(scene, ob, player, flagKey) {
       }
     } else if (ob.x + halfLen < player.x - 10 && !ob[flagKey]) {
       // Pasó exitosamente todo el tramo del puente
+      A.sfx('jump');
       ob[flagKey] = true;
       player.score += 600;
       showScorePopup(scene, player.x, player.y - 35, '+600 DRIFT!', '#00ffff');
@@ -1173,6 +1231,7 @@ function applyKnockback(scene, player) {
   player.jumpLanding = false;
   player.jumpTimer = 0;
   player.jumpZ = 0;
+  A.sfx('crash');
 }
 
 // ---------------------------------------------------------------------------
@@ -1331,19 +1390,18 @@ function updateStartScreen(scene, time) {
 
   // Selección
   if (consumePressed('START1') || consumePressed('START2') || consumePressed('P1_1') || consumePressed('P2_1')) {
+    A.init(); // <--- INYECTAR AQUÍ (Desbloquea el audio)
+    scene.startScreen.setVisible(false);
     if (scene.startMenuIdx === 0) {
       // 1 JUGADOR (VS CPU)
       scene.gameState.gameMode = '1P';
-      scene.startScreen.setVisible(false);
       startGame(scene);
     } else if (scene.startMenuIdx === 1) {
       // 2 JUGADORES (1 VS 1)
       scene.gameState.gameMode = '2P';
-      scene.startScreen.setVisible(false);
       startGame(scene);
     } else if (scene.startMenuIdx === 2) {
       // TABLA DE RÉCORDS
-      scene.startScreen.setVisible(false);
       showLeaderboardScreen(scene);
     }
   }
@@ -1507,6 +1565,7 @@ function createNameEntryScreen(scene) {
 
 function showNameEntry(scene, winnerLabel) {
   scene.phase = 'name_entry';
+  A.sfx('win');
   scene.neWinnerLabel = winnerLabel;
 
   const p1s = Math.round(scene.players.p1.score);
@@ -1785,10 +1844,10 @@ function startGame(scene) {
   scene.players.p1.x = W / 2 - 80;
   scene.players.p2.x = W / 2 + 80;
 
-  if (!scene.gameState.musicStarted) {
-    startMusic(scene);
-    scene.gameState.musicStarted = true;
-  }
+  // if (!scene.gameState.musicStarted) {
+  //   startMusic(scene);
+  //   scene.gameState.musicStarted = true;
+  // }
 }
 
 function resetGame(scene) {
@@ -2025,6 +2084,7 @@ function handlePlayerInput(scene, player, prefix, dt) {
   const LAND_DURATION = 0.14;   // Duración de caída/aterrizaje suave
 
   if (consumePressed(prefix + '_1') && !player.jumping) {
+    A.sfx('jump');
     player.jumping = true;
     player.jumpLanding = false;
     player.jumpTimer = 0;
@@ -2076,6 +2136,7 @@ function handlePlayerInput(scene, player, prefix, dt) {
         player.score += 200;
         player._pushT = scene.time.now;
         player._pushDir = opp.x >= player.x ? 1 : -1;
+        A.sfx('hit');
         showScorePopup(scene, player.x, player.y - 35, '+200 EMPUJÓN!', '#ff44aa');
       }
     }
