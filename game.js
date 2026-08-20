@@ -470,7 +470,7 @@ function renderTrack(scene, distance) {
     }
     
     if (r2 > 0.25) {
-      if (r2 > 0.85) drawIsoHouse(fGfx, x-10, cliffY(x) + 100 + r1 * 50, 6.5, wId % 2 === 0);
+      if (r2 > 0.6) drawIsoHouse(fGfx, x-10, cliffY(x) + 100 + r1 * 50, 6.5, wId % 2 === 0);
       else drawIsoTree(fGfx, x, cliffY(x) + 70 + r1 * 100, 5.5);
     }
   }
@@ -1970,7 +1970,7 @@ function handlePlayerInput(scene, player, prefix, dt) {
   if (player.paralyzed > 0) return; // no puede saltar mientras está aturdido
 
   // --- Salto instantáneo: despega de inmediato y se mantiene hasta 2s si se deja presionado ---
-  const MAX_JUMP_TIME = 2.0;    // Máximo tiempo total en el aire
+  const MAX_JUMP_TIME = 0.6;   // Máximo tiempo total en el aire
   const MIN_JUMP_HOLD = 0.18;   // Tiempo mínimo en el aire para un toque rápido
   const LAND_DURATION = 0.14;   // Duración de caída/aterrizaje suave
 
