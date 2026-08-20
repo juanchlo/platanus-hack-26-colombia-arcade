@@ -602,6 +602,7 @@ function createPlayers(scene) {
       paralyzed: 0,
       knockbackVel: 0,
       alive: true,
+      lives: 5,
       label: 'P1',
     },
     p2: {
@@ -615,6 +616,7 @@ function createPlayers(scene) {
       paralyzed: 0,
       knockbackVel: 0,
       alive: true,
+      lives: 5,
       label: 'P2',
     },
   };
@@ -1025,17 +1027,33 @@ function resolveObstacleHit(scene, obstacle, player) {
 // gradualmente. Sólo perdés si salís de pantalla por el borde trasero.
 function applyKnockback(scene, player) {
   player.paralyzed = PARALYZE_DURATION;
-  player.knockbackVel = PROG_KNOCKBACK / PARALYZE_DURATION; // retroceso suave
+  player.knockbackVel = PROG_KNOCKBACK / PARALYZE_DURATION;
   player.jumping = false;
   player.jumpLanding = false;
   player.jumpTimer = 0;
   player.jumpZ = 0;
+  player.lives = Math.max(0, (player.lives || 0) - 1);
+  if (player.lives <= 0) {
+    player.alive = false;
+    player.eliminatedBy = 'lives';
+  }
   A.sfx('crash');
 }
 
 // ---------------------------------------------------------------------------
 // HUD
 // ---------------------------------------------------------------------------
+function drawChontaduro(gfx, x, y, s, alive) {
+  const oc = alive ? 0xf5a020 : 0x554433;
+  const bc = alive ? 0x6b1a0a : 0x333333;
+  gfx.fillStyle(bc, 1);
+  gfx.fillEllipse(x, y + s * 0.45, s * 1.2, s * 0.55);
+  gfx.fillStyle(oc, 1);
+  gfx.fillEllipse(x, y - s * 0.05, s, s * 1.3);
+  gfx.fillStyle(0x1a1a1a, 1);
+  gfx.fillEllipse(x, y - s * 0.05, s * 0.32, s * 0.48);
+}
+
 function createHud(scene) {
   scene.hud = {};
 
@@ -1062,6 +1080,8 @@ function createHud(scene) {
     fontFamily: 'monospace', fontSize: '12px', color: '#ffffff', fontStyle: 'bold',
     stroke: '#000000', strokeThickness: 3,
   }).setOrigin(0.5).setDepth(10);
+
+  scene.hud.livesGfx = scene.add.graphics().setDepth(10);
 }
 
 function updateHud(scene) {
@@ -1076,6 +1096,14 @@ function updateHud(scene) {
   scene.hud.p2Score.setText(`2UP CHG\n${p2s}`);
   scene.hud.hiScore.setText(`HIGH SCORE\n${hi}`);
   scene.hud.speedDist.setText(`⚡ ${spd} km/h   🚩 ${dst} m`);
+
+  const lg = scene.hud.livesGfx;
+  lg.clear();
+  const sz = 11, ly = 65;
+  for (let i = 0; i < 5; i++) {
+    drawChontaduro(lg, 22 + i * 18, ly, sz, i < (scene.players.p1.lives || 0));
+    drawChontaduro(lg, W - 22 - i * 18, ly, sz, i < (scene.players.p2.lives || 0));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1228,6 +1256,10 @@ function createHowToPlayScreen(scene) {
 
   c.add(scene.add.text(W / 2, 76, '¡Sé el último en caer al vacío o quedar atrás!', {
     fontFamily: 'monospace', fontSize: '16px', color: '#aaffcc', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  c.add(scene.add.text(W / 2, 106, '🟠 5 CHONTADUROS de vida — perdes uno al chocar con obstáculos', {
+    fontFamily: 'monospace', fontSize: '13px', color: '#f5a020', fontStyle: 'bold',
   }).setOrigin(0.5));
 
   // Controles — guardamos refs para mostrar/ocultar según modo
@@ -1708,6 +1740,7 @@ function startGame(scene) {
     player.paralyzed = 0;
     player.knockbackVel = 0;
     player.pushCooldown = 0;
+    player.lives = 5;
     player._wF = 0.0008;
     player._pushT = null;
   }
