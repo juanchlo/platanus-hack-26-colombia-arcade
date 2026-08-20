@@ -1251,12 +1251,6 @@ function createStartScreen(scene) {
     fontFamily: 'monospace', fontSize: '12px', color: '#888866',
   }).setOrigin(0.5));
 
-  // High Score Attract Mode Ticker
-  scene.startHiScoreText = scene.add.text(W / 2, 138, '★ RÉCORD: 045000 · NEAA VS CHGO ★', {
-    fontFamily: 'monospace', fontSize: '12px', color: '#00ffcc', fontStyle: 'bold',
-  }).setOrigin(0.5);
-  c.add(scene.startHiScoreText);
-
   // Crate + character preview (Nea y Changó)
   const previewGfx = scene.add.graphics();
   const crateY = 216;
@@ -1286,6 +1280,12 @@ function createStartScreen(scene) {
     scene.startMenuTexts.push(txt);
     c.add(txt);
   }
+
+  // High Score Attract Mode Ticker
+  scene.startHiScoreText = scene.add.text(W / 2, menuY + MENU_ITEMS.length * 36 + 20, '★ RÉCORD: 045000 · NEAA VS CHGO ★', {
+    fontFamily: 'monospace', fontSize: '12px', color: '#00ffcc', fontStyle: 'bold',
+  }).setOrigin(0.5);
+  c.add(scene.startHiScoreText);
 
   // Indicaciones inferiores
   c.add(scene.add.text(W / 2, H - 36, 'ARRIBA/ABAJO: ELEGIR MODO   |   START / BOTÓN 1: SELECCIONAR', {
