@@ -226,6 +226,7 @@ function create() {
   createObstaclePool(scene);
   createHud(scene);
   createStartScreen(scene);
+  createHowToPlayScreen(scene);
   createLeaderboardScreen(scene);
   createNameEntryScreen(scene);
   createGameOverScreen(scene);
@@ -240,6 +241,11 @@ function update(time, delta) {
 
   if (scene.phase === 'start') {
     updateStartScreen(scene, time);
+    return;
+  }
+
+  if (scene.phase === 'howtoplay') {
+    updateHowToPlayScreen(scene);
     return;
   }
 
@@ -1335,12 +1341,12 @@ function updateStartScreen(scene, time) {
       // 1 JUGADOR (VS CPU)
       scene.gameState.gameMode = '1P';
       scene.startScreen.setVisible(false);
-      startGame(scene);
+      showHowToPlayScreen(scene);
     } else if (scene.startMenuIdx === 1) {
       // 2 JUGADORES (1 VS 1)
       scene.gameState.gameMode = '2P';
       scene.startScreen.setVisible(false);
-      startGame(scene);
+      showHowToPlayScreen(scene);
     } else if (scene.startMenuIdx === 2) {
       // TABLA DE RÉCORDS
       scene.startScreen.setVisible(false);
@@ -1352,6 +1358,76 @@ function updateStartScreen(scene, time) {
 // ---------------------------------------------------------------------------
 // Leaderboard View Screen (Acceso desde el menú principal)
 // ---------------------------------------------------------------------------
+function createHowToPlayScreen(scene) {
+  const c = scene.add.container(0, 0).setDepth(20).setVisible(false);
+  c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x050512, 0.93));
+
+  // Personajes
+  const gfx = scene.add.graphics();
+  const crateY = 210;
+  const cx1 = W / 2 - 120, cx2 = W / 2 + 120;
+  drawBeerCrate(gfx, cx1, crateY, 4); drawNea(gfx, cx1, crateY, 4);
+  drawBeerCrate(gfx, cx2, crateY, 4); drawChango(gfx, cx2, crateY, 4);
+  c.add(gfx);
+
+  c.add(scene.add.text(W / 2, 32, '¿CÓMO JUGAR?', {
+    fontFamily: 'monospace', fontSize: '32px', color: '#ffdd00', fontStyle: 'bold',
+    stroke: '#000', strokeThickness: 5,
+  }).setOrigin(0.5));
+
+  c.add(scene.add.text(W / 2, 76, '¡Sé el último en caer al vacío o quedar atrás!', {
+    fontFamily: 'monospace', fontSize: '16px', color: '#aaffcc', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  // Controles — guardamos refs para mostrar/ocultar según modo
+  const t = (x, y, str, col, sz) => scene.add.text(x, y, str, {
+    fontFamily: 'monospace', fontSize: (sz || 15) + 'px', color: col || '#ffffff',
+  }).setOrigin(0.5);
+
+  const lh = 26; // line height
+  const p1Lines = [
+    t(cx1, 268, 'NEA  —  P1', '#ff6666', 17),
+    t(cx1, 268 + lh,     '← Mover →   A / D', '#cccccc'),
+    t(cx1, 268 + lh * 2, 'Saltar:  U  (mantener = largo)', '#cccccc'),
+    t(cx1, 268 + lh * 3, 'Empujar: I', '#cccccc'),
+  ];
+  const p2Lines = [
+    t(cx2, 268, 'CHANGÓ  —  P2', '#6699ff', 17),
+    t(cx2, 268 + lh,     '← Mover →   ← / →', '#cccccc'),
+    t(cx2, 268 + lh * 2, 'Saltar:  R  (mantener = largo)', '#cccccc'),
+    t(cx2, 268 + lh * 3, 'Empujar: T', '#cccccc'),
+  ];
+
+  p1Lines.forEach(tx => c.add(tx));
+  p2Lines.forEach(tx => c.add(tx));
+
+  scene.htpP2Lines = p2Lines;
+
+  c.add(scene.add.text(W / 2, H - 30, 'CUALQUIER BOTÓN PARA COMENZAR', {
+    fontFamily: 'monospace', fontSize: '16px', color: '#ffdd00', fontStyle: 'bold',
+  }).setOrigin(0.5));
+
+  scene.howToPlayScreen = c;
+}
+
+function showHowToPlayScreen(scene) {
+  scene.phase = 'howtoplay';
+  scene.howToPlayScreen.setVisible(true);
+  // Mostrar controles P2 solo en modo 2 jugadores
+  const is2P = scene.gameState.gameMode === '2P';
+  scene.htpP2Lines.forEach(tx => tx.setVisible(is2P));
+}
+
+function updateHowToPlayScreen(scene) {
+  const anyBtn = consumePressed('START1') || consumePressed('START2') ||
+    consumePressed('P1_1') || consumePressed('P2_1') ||
+    consumePressed('P1_U') || consumePressed('P2_U');
+  if (anyBtn) {
+    scene.howToPlayScreen.setVisible(false);
+    startGame(scene);
+  }
+}
+
 function createLeaderboardScreen(scene) {
   const c = scene.add.container(0, 0).setDepth(20);
   c.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x050512, 0.95));
