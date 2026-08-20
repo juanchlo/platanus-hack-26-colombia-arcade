@@ -460,15 +460,28 @@ function renderTrack(scene, distance) {
   }
 
   // 5. DIVISIÓN DEL PROCEDURAL: Ladera al Fondo, Valle al Frente
-  for (let x = -objSpace - (distance % objSpace); x <= W + objSpace; x += objSpace) {
-    let wId = Math.floor((x + distance) / objSpace);
-    let r1 = Math.abs(Math.sin(wId * 12.9898) * 43758.5453) % 1, r2 = Math.abs(Math.cos(wId * 4.1415) * 43758.5453) % 1;
+  
+  // Calculamos el "chunk" del mundo en el que está el borde izquierdo de la cámara
+  const startChunk = Math.floor(distance / objSpace) - 1;
+  // Calculamos cuántos chunks caben en pantalla para iterar solo esos
+  const totalChunks = Math.ceil(W / objSpace) + 2;
+
+  for (let i = 0; i <= totalChunks; i++) {
+    // wId ahora es siempre un número entero perfecto e inmutable
+    let wId = startChunk + i;
     
+    // Calculamos la posición en pantalla basándonos en el ID del chunk
+    let x = (wId * objSpace) - distance;
+    
+    // La semilla ahora es 100% estable porque wId no sufre errores de punto flotante
+    let r1 = Math.abs(Math.sin(wId * 12.9898) * 43758.5453) % 1;
+    let r2 = Math.abs(Math.cos(wId * 4.1415) * 43758.5453) % 1;
+
     if (r1 > 0.35) {
       if (r1 > 0.9) drawIsoHouse(bGfx, x, curbY(x) - 10 - r2 * 40, 6.5, wId % 2 !== 0);
       else drawIsoTree(bGfx, x, curbY(x) - 60 - r2 * 80, 5.5);
     }
-    
+
     if (r2 > 0.25) {
       if (r2 > 0.6) drawIsoHouse(fGfx, x-10, cliffY(x) + 100 + r1 * 50, 6.5, wId % 2 === 0);
       else drawIsoTree(fGfx, x, cliffY(x) + 70 + r1 * 100, 5.5);
