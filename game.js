@@ -1238,13 +1238,13 @@ function createHowToPlayScreen(scene) {
   const lh = 26; // line height
   const p1Lines = [
     t(cx1, 268, 'NEA  —  P1', '#ff6666', 17),
-    t(cx1, 268 + lh,     '← Mover →   A / D', '#cccccc'),
+    t(cx1, 268 + lh,     '↑↓←→ Mover   W/A/S/D', '#cccccc'),
     t(cx1, 268 + lh * 2, 'Saltar:  U  (mantener = largo)', '#cccccc'),
     t(cx1, 268 + lh * 3, 'Empujar: I', '#cccccc'),
   ];
   const p2Lines = [
     t(cx2, 268, 'CHANGÓ  —  P2', '#6699ff', 17),
-    t(cx2, 268 + lh,     '← Mover →   ← / →', '#cccccc'),
+    t(cx2, 268 + lh,     '↑↓←→ Mover   ↑/↓/←/→', '#cccccc'),
     t(cx2, 268 + lh * 2, 'Saltar:  R  (mantener = largo)', '#cccccc'),
     t(cx2, 268 + lh * 3, 'Empujar: T', '#cccccc'),
   ];
